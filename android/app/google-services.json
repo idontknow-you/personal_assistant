@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "104138744354",
+    "project_id": "personal-os-aea59",
+    "storage_bucket": "personal-os-aea59.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:104138744354:android:a6cd8b63926cae3240207b",
+        "android_client_info": {
+          "package_name": "com.example.personal_os"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBD5jW2BDIdSv3mHZyuRkx2p7SzsKeSGas"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
