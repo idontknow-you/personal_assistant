@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/task.dart';
 import '../services/task_service.dart';
 import '../widgets/task_tile.dart';
+import '../widgets/theme_toggle_switch.dart';
 
 class TaskListPage extends StatefulWidget {
   const TaskListPage({super.key, required this.uid});
@@ -65,10 +66,13 @@ class _TaskListPageState extends State<TaskListPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tasks'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-      ),
+        appBar: AppBar(
+            title: const Text('Tasks'),
+            actions: [
+                ThemeToggleSwitch(),
+                SizedBox(width: 8),
+            ],
+        ),
       body: StreamBuilder<List<Task>>(
         stream: _taskService.watchTasks(),
         builder: (context, snapshot) {
