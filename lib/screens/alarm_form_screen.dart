@@ -120,8 +120,9 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
       updatedAt: now,
     );
 
+    // saveAlarm handles both Firestore persistence AND native scheduling
+    // internally now — no need to call scheduleAlarm separately here.
     await widget.alarmService.saveAlarm(alarm);
-    await widget.alarmService.scheduleAlarm(alarm);
 
     if (mounted) Navigator.of(context).pop();
   }

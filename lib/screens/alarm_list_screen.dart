@@ -116,7 +116,6 @@ class AlarmListScreen extends StatelessWidget {
                       ),
                     ));
                   },
-                  },
                   title: Text(
                     _formatTime(alarm.hour, alarm.minute),
                     style: Theme.of(context).textTheme.headlineSmall,

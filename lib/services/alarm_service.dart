@@ -13,8 +13,12 @@ class AlarmService {
 
   // ---------------- Firestore CRUD ----------------
 
+  /// Persists the alarm to Firestore AND (re)schedules it with the native
+  /// plugin, so this is always the single call site that keeps both sides
+  /// in sync — callers never need to remember to call scheduleAlarm too.
   Future<void> saveAlarm(AlarmModel alarm) async {
     await _alarmsCollection.doc(alarm.id.toString()).set(alarm.toMap());
+    await scheduleAlarm(alarm);
   }
 
   Future<void> deleteAlarm(int id) async {
@@ -137,6 +141,5 @@ class AlarmService {
   Future<void> setEnabled(AlarmModel alarm, bool enabled) async {
     final updated = alarm.copyWith(isEnabled: enabled);
     await saveAlarm(updated);
-    await scheduleAlarm(updated);
   }
 }
