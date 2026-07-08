@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import '../models/alarm.dart';
-import '../services/alarm_service.dart';
+import '../../models/alarms/alarm.dart';
+import '../../services/alarms/alarm_service.dart';
 
 class AlarmFormScreen extends StatefulWidget {
   const AlarmFormScreen({
@@ -79,8 +79,7 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
   }
 
   Future<void> _pickDeviceFile() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
-    if (result != null && result.files.single.path != null) {
+    final result = await FilePicker.pickFiles(type: FileType.audio);    if (result != null && result.files.single.path != null) {
       setState(() {
         _soundSource = SoundSource.deviceFile;
         _soundPath = result.files.single.path;

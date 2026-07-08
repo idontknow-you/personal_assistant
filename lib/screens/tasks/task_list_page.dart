@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../models/task.dart';
-import '../services/task_service.dart';
-import '../widgets/task_tile.dart';
-import '../widgets/theme_toggle_switch.dart';
+import '../../models/tasks/task.dart';
+import '../../services/tasks/task_service.dart';
+import '../../widgets/tasks/task_tile.dart';
+import '../../widgets/common/theme_toggle_switch.dart';
 
 class TaskListPage extends StatefulWidget {
   const TaskListPage({super.key, required this.uid});

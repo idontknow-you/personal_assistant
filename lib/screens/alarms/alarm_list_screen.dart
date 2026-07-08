@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../main.dart'; // for the shared alarmService instance
-import '../models/alarm.dart';
+import '../../main.dart';
+import '../../models/alarms/alarm.dart';
 import 'alarm_form_screen.dart';
 
 class AlarmListScreen extends StatelessWidget {

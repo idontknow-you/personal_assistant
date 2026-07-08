@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import 'task_list_page.dart';
+import 'home_shell.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -24,7 +24,7 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
         if (snapshot.hasData) {
-          return TaskListPage(uid: snapshot.data!.uid);
+          return HomeShell(uid: snapshot.data!.uid);
         }
         _authService.signInAnonymously();
         return const Scaffold(

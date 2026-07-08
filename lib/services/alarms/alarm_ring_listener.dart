@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:alarm/alarm.dart' as alarm_pkg;
-import '../screens/alarm_ring_screen.dart';
+import '../../screens/alarms/alarm_ring_screen.dart';
 import 'alarm_service.dart';
 
 /// Listens for ringing alarms globally and pushes the ring screen.

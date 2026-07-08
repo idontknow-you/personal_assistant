@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:alarm/alarm.dart' as alarm_pkg;
-import '../models/alarm.dart';
+import '../../models/alarms/alarm.dart';
 
 /// Bridges an [AlarmModel] (our Firestore-backed data) to the native
 /// `alarm` package (actual scheduling/ringing) and keeps Firestore in sync.

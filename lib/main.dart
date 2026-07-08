@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 import 'screens/auth_gate.dart';
 import 'package:alarm/alarm.dart';
-import 'services/alarm_service.dart';
-import 'services/alarm_ring_listener.dart';
+import 'services/alarms/alarm_service.dart';
+import 'services/alarms/alarm_ring_listener.dart';
 
 /// Global theme state — read/written from anywhere via themeNotifier / setThemeMode()
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
