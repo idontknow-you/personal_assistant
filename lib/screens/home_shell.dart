@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'tasks/task_list_page.dart';
 import 'alarms/alarm_list_screen.dart';
+import '../services/alarms/alarm_service.dart';
 
-/// Minimal bottom-nav shell for Phase 1 — switches between Tasks and Alarms.
-/// Extend `pages` / `destinations` together as Phase 2+ screens are added
-/// (notes/diary, doom-scroll blocker, etc).
 class HomeShell extends StatefulWidget {
   final String uid;
   const HomeShell({super.key, required this.uid});
@@ -15,12 +13,19 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  late final AlarmService _alarmService;
+
+  @override
+  void initState() {
+    super.initState();
+    _alarmService = AlarmService();
+  }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      TaskListPage(uid: widget.uid),
-      const AlarmListScreen(),
+      TaskListPage(uid: widget.uid, alarmService: _alarmService),
+      AlarmListScreen(alarmService: _alarmService),
     ];
 
     return Scaffold(
