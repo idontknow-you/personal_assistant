@@ -17,7 +17,19 @@ class AlarmService {
   /// plugin, so this is always the single call site that keeps both sides
   /// in sync — callers never need to remember to call scheduleAlarm too.
   Future<void> saveAlarm(AlarmModel alarm) async {
-    await _alarmsCollection.doc(alarm.id.toString()).set(alarm.toMap());
+    // .set() updates local cache synchronously; the returned Future only
+    // resolves after a server round-trip, which is what was causing the
+    // multi-second hang on save. We don't need to wait for that here —
+    // listeners (watchAlarms) already see the change from local cache.
+    final writeFuture = _alarmsCollection.doc(alarm.id.toString()).set(alarm.toMap());
+    writeFuture.catchError((e) {
+      // Write failed to eventually sync (e.g. permanently offline). No UI
+      // surface for this yet — worth adding a retry/error indicator later
+      // if it becomes a real problem.
+    });
+
+    // This has to be awaited: it's the native scheduling call that actually
+    // makes the alarm ring, and it's local (no network), so it's fast.
     await scheduleAlarm(alarm);
   }
 
@@ -53,6 +65,10 @@ class AlarmService {
   }
 
   /// Computes the next real DateTime this alarm should fire at.
+  /// NOTE: for one-time alarms this just reflects whatever date is
+  /// currently stored — it does NOT check if that's in the past. That
+  /// check/correction happens in [scheduleAlarm] instead, since only
+  /// scheduling (not e.g. display) should mutate the stored date.
   DateTime _nextTriggerDate(AlarmModel alarm) {
     final now = DateTime.now();
 
@@ -95,10 +111,32 @@ class AlarmService {
       return;
     }
 
+    var effectiveAlarm = alarm;
+
+    // One-time alarms have no "next occurrence" concept like repeating
+    // ones do. If the stored date/time has already passed — e.g. the user
+    // re-enables an alarm that already rang, or the app was closed past
+    // the trigger time — silently rolling forward to tomorrow (same
+    // hour/minute) is safer than handing the native plugin a past
+    // DateTime, which can fire immediately or behave unpredictably.
+    if (alarm.type == AlarmType.oneTime) {
+      final trigger = _nextTriggerDate(alarm);
+      if (trigger.isBefore(DateTime.now())) {
+        final rolledDate = alarm.oneTimeDate!.add(const Duration(days: 1));
+        effectiveAlarm = alarm.copyWith(oneTimeDate: rolledDate);
+        // Persist the corrected date directly on the doc (not via
+        // saveAlarm, which would call back into scheduleAlarm and recurse).
+        final updatedMap = effectiveAlarm.toMap();
+        await _alarmsCollection
+            .doc(alarm.id.toString())
+            .update({'oneTimeDate': updatedMap['oneTimeDate']});
+      }
+    }
+
     final settings = alarm_pkg.AlarmSettings(
-      id: alarm.id,
-      dateTime: _nextTriggerDate(alarm),
-      assetAudioPath: _resolveAssetPath(alarm),
+      id: effectiveAlarm.id,
+      dateTime: _nextTriggerDate(effectiveAlarm),
+      assetAudioPath: _resolveAssetPath(effectiveAlarm),
       loopAudio: true,
       vibrate: true,
       warningNotificationOnKill: true,
@@ -109,7 +147,7 @@ class AlarmService {
         volumeEnforced: true,
       ),
       notificationSettings: alarm_pkg.NotificationSettings(
-        title: alarm.label.isEmpty ? 'Alarm' : alarm.label,
+        title: effectiveAlarm.label.isEmpty ? 'Alarm' : effectiveAlarm.label,
         body: 'Tap to open',
         stopButton: 'Stop',
       ),

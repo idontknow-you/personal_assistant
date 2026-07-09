@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:alarm/alarm.dart' as alarm_pkg;
 import '../../models/alarms/alarm.dart' as models;
 import '../../services/alarms/alarm_service.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
-class AlarmRingScreen extends StatelessWidget {
+class AlarmRingScreen extends StatefulWidget {
   const AlarmRingScreen({
     super.key,
     required this.ringingSettings,
@@ -13,35 +14,98 @@ class AlarmRingScreen extends StatelessWidget {
   final alarm_pkg.AlarmSettings ringingSettings;
   final AlarmService alarmService;
 
-  Future<void> _stop(BuildContext context) async {
-    await alarm_pkg.Alarm.stop(ringingSettings.id);
+  @override
+  State<AlarmRingScreen> createState() => _AlarmRingScreenState();
+}
 
-    final alarm = await alarmService.getAlarm(ringingSettings.id);
-    if (alarm != null) {
-      // One-time alarms have no "next" occurrence — disable instead
-      // of rescheduling. Repeating ones get queued for their next day.
-      if (alarm.type == models.AlarmType.oneTime) {
-        await alarmService.setEnabled(alarm, false);
-      } else {
-        await alarmService.rescheduleAfterRing(alarm);
-      }
-    }
+class _AlarmRingScreenState extends State<AlarmRingScreen>
+    with WidgetsBindingObserver {
+  bool _handled = false; // guards against double pop / double cleanup
 
-    if (context.mounted) Navigator.of(context).pop();
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WakelockPlus.enable();
   }
 
-  Future<void> _snooze(BuildContext context, Duration duration) async {
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    WakelockPlus.disable();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Covers the lock-screen case: user hit Stop from the native
+    // notification while locked, sound stopped there, then they
+    // unlock and land back on this (now stale) screen.
+    if (state == AppLifecycleState.resumed) {
+      _checkIfStoppedExternally();
+    }
+  }
+
+  Future<void> _checkIfStoppedExternally() async {
+    if (_handled) return;
+    final stillRinging = await alarm_pkg.Alarm.isRinging(
+      widget.ringingSettings.id,
+    );
+    if (!stillRinging) {
+      await _finalizeAndPop();
+    }
+  }
+
+  /// Runs the same "what happens after an alarm stops" bookkeeping
+  /// (disable one-time / reschedule repeating) and pops, regardless
+  /// of whether this was triggered by the in-app Stop button or by
+  /// detecting an external stop.
+  Future<void> _finalizeAndPop() async {
+    if (_handled) return;
+    _handled = true;
+
+    try {
+      final alarm = await widget.alarmService.getAlarm(
+        widget.ringingSettings.id,
+      );
+      if (alarm != null) {
+        if (alarm.type == models.AlarmType.oneTime) {
+          await widget.alarmService.setEnabled(alarm, false);
+        } else {
+          await widget.alarmService.rescheduleAfterRing(alarm);
+        }
+      }
+    } catch (_) {
+      // Bookkeeping failure shouldn't trap the user on this screen.
+    }
+
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _stop() async {
+    try {
+      await alarm_pkg.Alarm.stop(widget.ringingSettings.id);
+    } catch (_) {
+      // Already stopped natively (e.g. via lock-screen action) —
+      // ignore and fall through to cleanup/pop anyway.
+    }
+    await _finalizeAndPop();
+  }
+
+  Future<void> _snooze(Duration duration) async {
+    if (_handled) return;
+    _handled = true;
     await alarm_pkg.Alarm.set(
-      alarmSettings: ringingSettings.copyWith(
+      alarmSettings: widget.ringingSettings.copyWith(
         dateTime: DateTime.now().add(duration),
       ),
     );
-    if (context.mounted) Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    final title = ringingSettings.notificationSettings.title;
+    final title = widget.ringingSettings.notificationSettings.title;
     final theme = Theme.of(context);
     final onPrimary = theme.colorScheme.onPrimary;
     final primary = theme.colorScheme.primary;
@@ -56,7 +120,6 @@ class AlarmRingScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Icon in a soft circular container instead of floating bare
                 Container(
                   padding: const EdgeInsets.all(28),
                   decoration: BoxDecoration(
@@ -76,7 +139,6 @@ class AlarmRingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 64),
 
-                // Snooze — solid, high-contrast pill so it reads as tappable
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -92,14 +154,12 @@ class AlarmRingScreen extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    onPressed: () => _snooze(context, const Duration(minutes: 5)),
+                    onPressed: () => _snooze(const Duration(minutes: 5)),
                     child: const Text('Snooze 5 min'),
                   ),
                 ),
                 const SizedBox(height: 16),
 
-                // Stop — outlined with explicit onPrimary border + text so
-                // it's actually visible against the primary-colored bg
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -115,7 +175,7 @@ class AlarmRingScreen extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    onPressed: () => _stop(context),
+                    onPressed: _stop,
                     child: const Text('Stop'),
                   ),
                 ),

@@ -18,6 +18,8 @@ dependencies:
   firebase_auth: ^6.5.4
   shared_preferences: ^2.5.5
   file_picker: ^11.0.2
+  wakelock_plus: ^1.2.8
+  audioplayers: ^6.1.0
 
 dependency_overrides:
   flutter_fgbg: 0.6.0
