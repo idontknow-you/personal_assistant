@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../models/alarms/alarm.dart';
 import '../../services/alarms/alarm_service.dart';
+import '../../services/tasks/task_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 
 class AlarmFormScreen extends StatefulWidget {
@@ -9,11 +10,19 @@ class AlarmFormScreen extends StatefulWidget {
     super.key,
     required this.alarmService,
     this.existingAlarm,
+    this.taskService,
   });
 
   final AlarmService alarmService;
   /// Null = creating a new alarm. Non-null = editing this one.
   final AlarmModel? existingAlarm;
+
+  /// Optional — only needed to look up the title of a linked task (for the
+  /// "linked to task" banner below). Pass it when opening this screen from
+  /// contexts where a TaskService is available (e.g. the Alarms tab, if you
+  /// wire it through). If omitted, the banner still shows but without the
+  /// task's title.
+  final TaskService? taskService;
 
   @override
   State<AlarmFormScreen> createState() => _AlarmFormScreenState();
@@ -44,7 +53,13 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
   bool _soundPickerExpanded = false;
   late final AudioPlayer _previewPlayer;
 
+  /// Title of the linked task, if this alarm has one and we could fetch it.
+  /// Null while loading, or if there's no link, or if the fetch failed.
+  String? _linkedTaskTitle;
+  bool _loadingLinkedTask = false;
+
   bool get _isEditing => widget.existingAlarm != null;
+  bool get _isLinkedToTask => widget.existingAlarm?.linkedTaskId != null;
 
   @override
   void initState() {
@@ -59,6 +74,20 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
     _soundPath = a?.soundPath;
     _previewPlayer = AudioPlayer();
     _previewPlayer.setReleaseMode(ReleaseMode.stop);
+
+    if (_isLinkedToTask && widget.taskService != null) {
+      _loadingLinkedTask = true;
+      widget.taskService!.getTask(a!.linkedTaskId!).then((task) {
+        if (!mounted) return;
+        setState(() {
+          _linkedTaskTitle = task?.title;
+          _loadingLinkedTask = false;
+        });
+      }).catchError((_) {
+        if (!mounted) return;
+        setState(() => _loadingLinkedTask = false);
+      });
+    }
   }
 
   @override
@@ -188,6 +217,56 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
     );
   }
 
+  Widget _linkedTaskBanner() {
+    final theme = Theme.of(context);
+    String message;
+    if (_loadingLinkedTask) {
+      message = 'Linked to a task…';
+    } else if (_linkedTaskTitle != null) {
+      message = 'Linked to task: $_linkedTaskTitle';
+    } else {
+      message = 'Linked to a task';
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.link, size: 20, color: theme.colorScheme.onSecondaryContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSecondaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Changes made here won\'t update the task\'s due date. '
+                  'Edit the task itself to keep them in sync.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSecondaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
 
@@ -207,11 +286,19 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
         oneTimeDate: _type == AlarmType.oneTime
             ? DateTime(_oneTimeDate.year, _oneTimeDate.month, _oneTimeDate.day)
             : null,
-        isEnabled: true,
+        // Preserve enabled state on edits rather than force-enabling — saving
+        // an edit (e.g. just changing the label) shouldn't silently
+        // re-activate an alarm the user deliberately turned off from the
+        // Alarms list. Only genuinely new alarms default to enabled.
+        isEnabled: widget.existingAlarm?.isEnabled ?? true,
         soundSource: _soundSource,
         soundPath: _soundSource == SoundSource.deviceDefault ? null : _soundPath,
         createdAt: widget.existingAlarm?.createdAt ?? now,
         updatedAt: now,
+        // Preserve the task link — this alarm may have been created from a
+        // task's "reminder" toggle. Rebuilding AlarmModel from scratch here
+        // without this would silently unlink it from that task on any edit.
+        linkedTaskId: widget.existingAlarm?.linkedTaskId,
       );
 
       // saveAlarm handles both Firestore persistence AND native scheduling
@@ -236,6 +323,7 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (_isLinkedToTask) _linkedTaskBanner(),
           Center(
             child: TextButton(
               onPressed: _pickTime,

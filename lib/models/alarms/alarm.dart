@@ -1,57 +1,26 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-/// Where an alarm's sound comes from.
-/// - [deviceDefault]: use the phone's built-in default alarm sound (soundPath is null)
-/// - [bundled]: one of the sounds shipped inside the app (soundPath is an asset path,
-///   e.g. 'assets/sounds/classic.mp3')
-/// - [deviceFile]: a file the user picked from their phone (soundPath is an absolute
-///   file path, e.g. '/storage/emulated/0/Download/wake_up.mp3')
 enum SoundSource { deviceDefault, bundled, deviceFile }
 
 enum AlarmType { oneTime, repeating }
 
 class AlarmModel {
-  /// Used both as the Firestore document ID and the native alarm ID
-  /// passed to the `alarm` package. Must be a positive int (package requirement).
   final int id;
-
   final String label;
-
-  /// 24-hour time. We store hour/minute separately (not a full DateTime)
-  /// because repeating alarms recompute their next actual trigger date
-  /// each time they're (re)scheduled.
   final int hour;
   final int minute;
-
   final AlarmType type;
-
-  /// Only meaningful when [type] is [AlarmType.repeating].
-  /// Uses DateTime weekday values: 1 = Monday ... 7 = Sunday.
   final Set<int> repeatDays;
-
-  /// Only meaningful when [type] is [AlarmType.oneTime]. The specific
-  /// calendar date this alarm should fire on (combined with [hour]/[minute]).
-  /// Required for one-time alarms since "7:00 AM" alone doesn't say *which*
-  /// day — only repeating alarms can rely on hour/minute + weekday alone.
-  ///
-  /// NOTE: this field only carries the year/month/day. Time-of-day always
-  /// comes from [hour]/[minute] — if [oneTimeDate] happens to have a
-  /// non-midnight time component (e.g. from DateTime.now()), it should be
-  /// ignored by any code that builds the actual trigger DateTime. Consider
-  /// only ever constructing this with DateTime(year, month, day) at call
-  /// sites to avoid ambiguity.
   final DateTime? oneTimeDate;
-
   final bool isEnabled;
-
   final SoundSource soundSource;
-
-  /// See [SoundSource] docs above for what this holds in each case.
-  /// Null when [soundSource] is [SoundSource.deviceDefault].
   final String? soundPath;
-
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Firestore doc id of the Task this alarm was created for, if any.
+  /// Null for standalone alarms (the normal case).
+  final String? linkedTaskId;
 
   const AlarmModel({
     required this.id,
@@ -66,18 +35,12 @@ class AlarmModel {
     this.soundPath,
     required this.createdAt,
     required this.updatedAt,
+    this.linkedTaskId,
   }) : assert(
          type != AlarmType.oneTime || oneTimeDate != null,
          'AlarmType.oneTime requires oneTimeDate to be set',
        );
 
-  /// Note on nullable-field clearing: [oneTimeDate] and [soundPath] can't be
-  /// cleared via `oneTimeDate: null` / `soundPath: null` — Dart can't tell
-  /// "pass null" apart from "didn't pass anything" through a normal named
-  /// param, so `?? this.field` would just keep the old value either way.
-  /// Use [clearOneTimeDate] / [clearSoundPath] instead when you need to
-  /// actually null them out (e.g. switching type from oneTime -> repeating,
-  /// or switching soundSource to deviceDefault).
   AlarmModel copyWith({
     String? label,
     int? hour,
@@ -91,6 +54,8 @@ class AlarmModel {
     String? soundPath,
     bool clearSoundPath = false,
     DateTime? updatedAt,
+    String? linkedTaskId,
+    bool clearLinkedTaskId = false,
   }) {
     assert(
       !(oneTimeDate != null && clearOneTimeDate),
@@ -99,6 +64,10 @@ class AlarmModel {
     assert(
       !(soundPath != null && clearSoundPath),
       'Pass either soundPath or clearSoundPath: true, not both',
+    );
+    assert(
+      !(linkedTaskId != null && clearLinkedTaskId),
+      'Pass either linkedTaskId or clearLinkedTaskId: true, not both',
     );
 
     return AlarmModel(
@@ -115,6 +84,8 @@ class AlarmModel {
       soundPath: clearSoundPath ? null : (soundPath ?? this.soundPath),
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
+      linkedTaskId:
+          clearLinkedTaskId ? null : (linkedTaskId ?? this.linkedTaskId),
     );
   }
 
@@ -133,6 +104,7 @@ class AlarmModel {
       'soundPath': soundPath,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'linkedTaskId': linkedTaskId,
     };
   }
 
@@ -152,6 +124,7 @@ class AlarmModel {
       soundPath: map['soundPath'] as String?,
       createdAt: (map['createdAt'] as Timestamp).toDate(),
       updatedAt: (map['updatedAt'] as Timestamp).toDate(),
+      linkedTaskId: map['linkedTaskId'] as String?,
     );
   }
 

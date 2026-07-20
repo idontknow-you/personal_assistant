@@ -132,59 +132,71 @@ class _TaskListPageState extends State<TaskListPage> {
   }
 
   void _showStreakDetails(BuildContext context, int current, int best) {
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      showDragHandle: true,
       builder: (context) {
         final theme = Theme.of(context);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.local_fire_department, size: 32),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$current day${current == 1 ? '' : 's'}',
-                        style: theme.textTheme.headlineSmall,
-                      ),
-                      Text(
-                        'current streak',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.local_fire_department, size: 32),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$current day${current == 1 ? '' : 's'}',
+                          style: theme.textTheme.headlineSmall,
                         ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Best: $best day${best == 1 ? '' : 's'}',
-                style: theme.textTheme.bodyMedium,
-              ),
-              const Divider(height: 32),
-              Text(
-                'How this works',
-                style: theme.textTheme.titleSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Your streak counts consecutive days where every task due '
-                'that day was completed. Missing even one task due on a '
-                'given day resets it to 0. Tasks with no due date set don\'t '
-                'count toward this — only tasks you\'ve scheduled.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                        Text(
+                          'current streak',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  'Best: $best day${best == 1 ? '' : 's'}',
+                  style: theme.textTheme.bodyMedium,
+                ),
+                const Divider(height: 32),
+                Text(
+                  'How this works',
+                  style: theme.textTheme.titleSmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Your streak counts consecutive days where every task due '
+                  'that day was completed. Missing even one task due on a '
+                  'given day resets it to 0. Tasks with no due date set don\'t '
+                  'count toward this — only tasks you\'ve scheduled.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

@@ -1,12 +1,35 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:alarm/alarm.dart' as alarm_pkg;
 import '../../models/alarms/alarm.dart';
+
+/// Marker used in a re-ring alarm's notification body so the ring screen
+/// can tell "this is the automatic 5-minute retry" apart from the original
+/// ring, and give up instead of retrying again if this one also times out.
+class AlarmRingMarkers {
+  static const missedRetry = '__missed_retry__';
+}
 
 /// Bridges an [AlarmModel] (our Firestore-backed data) to the native
 /// `alarm` package (actual scheduling/ringing) and keeps Firestore in sync.
 class AlarmService {
-  final CollectionReference<Map<String, dynamic>> _alarmsCollection =
-      FirebaseFirestore.instance.collection('alarms');
+  /// Alarms live under users/{uid}/alarms — NOT a flat top-level
+  /// collection. This matters for two reasons: (1) it's the actual
+  /// per-user data isolation fix, and (2) a flat collection was almost
+  /// certainly why saves silently failed to "stick" (toggle reverting) —
+  /// if Firestore rules only match scoped paths like users/{uid}/*, a
+  /// write to a flat `alarms/{id}` path matches no rule and gets denied,
+  /// which saveAlarm() was swallowing silently via catchError.
+  CollectionReference<Map<String, dynamic>> get _alarmsCollection {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw StateError('AlarmService used before a user is signed in');
+    }
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('alarms');
+  }
 
   /// Call once at app startup, before any scheduling happens.
   Future<void> init() => alarm_pkg.Alarm.init();
@@ -23,9 +46,11 @@ class AlarmService {
     // listeners (watchAlarms) already see the change from local cache.
     final writeFuture = _alarmsCollection.doc(alarm.id.toString()).set(alarm.toMap());
     writeFuture.catchError((e) {
-      // Write failed to eventually sync (e.g. permanently offline). No UI
-      // surface for this yet — worth adding a retry/error indicator later
-      // if it becomes a real problem.
+      // Write failed to eventually sync (e.g. permanently offline, or a
+      // rules mismatch). No UI surface for this yet — worth adding a
+      // retry/error indicator later if it becomes a real problem. If you
+      // see toggles silently reverting again after this change, this is
+      // the first place to add a debugPrint(e) to check.
     });
 
     // This has to be awaited: it's the native scheduling call that actually
@@ -179,5 +204,56 @@ class AlarmService {
   Future<void> setEnabled(AlarmModel alarm, bool enabled) async {
     final updated = alarm.copyWith(isEnabled: enabled);
     await saveAlarm(updated);
+  }
+
+  // ---------------- Missed-alarm auto-retry ----------------
+
+  /// Called by the ring screen when an alarm has been ringing for the
+  /// full timeout window with no user response. Reschedules a one-shot
+  /// retry 5 minutes later, tagged with [AlarmRingMarkers.missedRetry] so
+  /// the ring screen knows to give up (instead of retrying forever) if
+  /// this one also times out.
+  Future<void> scheduleMissedRetry(alarm_pkg.AlarmSettings original) async {
+    final retrySettings = original.copyWith(
+      dateTime: DateTime.now().add(const Duration(minutes: 5)),
+      notificationSettings: alarm_pkg.NotificationSettings(
+        title: original.notificationSettings.title,
+        body: AlarmRingMarkers.missedRetry,
+        stopButton: original.notificationSettings.stopButton,
+      ),
+    );
+    await alarm_pkg.Alarm.set(alarmSettings: retrySettings);
+  }
+
+  /// Fires a short, silent, non-full-screen "you missed this" notification
+  /// after both the original ring and its retry have timed out unanswered.
+  /// Reuses the same plugin (no extra notification dependency needed) —
+  /// it's scheduled ~1s out, doesn't loop, doesn't take over the screen,
+  /// and auto-stops itself a few seconds later so it just leaves a
+  /// notification behind rather than actually ringing again.
+  Future<void> fireMissedNotification(alarm_pkg.AlarmSettings original) async {
+    // Offset well clear of any real alarm id range to avoid collisions.
+    final missedId = original.id + 900000000;
+    await alarm_pkg.Alarm.set(
+      alarmSettings: original.copyWith(
+        id: missedId,
+        dateTime: DateTime.now().add(const Duration(seconds: 1)),
+        loopAudio: false,
+        vibrate: false,
+        androidFullScreenIntent: false,
+        volumeSettings: alarm_pkg.VolumeSettings.fixed(volume: 0.0),
+        notificationSettings: alarm_pkg.NotificationSettings(
+          title: original.notificationSettings.title.isEmpty
+              ? 'Missed alarm'
+              : 'Missed: ${original.notificationSettings.title}',
+          body: "You didn't respond in time.",
+          stopButton: 'Dismiss',
+        ),
+      ),
+    );
+    Future.delayed(
+      const Duration(seconds: 3),
+      () => alarm_pkg.Alarm.stop(missedId),
+    );
   }
 }

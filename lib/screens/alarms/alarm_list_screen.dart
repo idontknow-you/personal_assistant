@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../main.dart';
 import '../../models/alarms/alarm.dart';
+import '../../services/tasks/task_service.dart';
 import 'alarm_form_screen.dart';
+import '../../services/alarms/alarm_service.dart';
 
 class AlarmListScreen extends StatelessWidget {
-  const AlarmListScreen({super.key});
-
+  final AlarmService alarmService;
+  const AlarmListScreen({super.key, required this.alarmService});
+  
   static const _weekdayLabels = {
     1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu',
     5: 'Fri', 6: 'Sat', 7: 'Sun',
@@ -26,6 +30,15 @@ class AlarmListScreen extends StatelessWidget {
     if (alarm.repeatDays.isEmpty) return 'Repeating · no days set';
     final sortedDays = alarm.repeatDays.toList()..sort();
     return sortedDays.map((d) => _weekdayLabels[d]).join(' ');
+  }
+
+  /// Returns a TaskService for the current user, or null if somehow no
+  /// user is signed in yet (shouldn't happen once anonymous auth has run,
+  /// but this screen shouldn't crash if it does).
+  TaskService? _currentTaskService() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return null;
+    return TaskService(uid);
   }
 
   Future<void> _confirmDelete(BuildContext context, AlarmModel alarm) async {
@@ -52,6 +65,16 @@ class AlarmListScreen extends StatelessWidget {
     );
     if (confirmed == true) {
       await alarmService.deleteAlarm(alarm.id);
+
+      // If this alarm was created from a task's "reminder" toggle, clear
+      // the back-reference so the task stops showing a bell icon for an
+      // alarm that no longer exists.
+      if (alarm.linkedTaskId != null) {
+        final taskService = _currentTaskService();
+        if (taskService != null) {
+          await taskService.clearLinkedAlarm(alarm.linkedTaskId!);
+        }
+      }
     }
   }
 
@@ -113,12 +136,25 @@ class AlarmListScreen extends StatelessWidget {
                       builder: (_) => AlarmFormScreen(
                         alarmService: alarmService,
                         existingAlarm: alarm,
+                        taskService: _currentTaskService(),
                       ),
                     ));
                   },
-                  title: Text(
-                    _formatTime(alarm.hour, alarm.minute),
-                    style: Theme.of(context).textTheme.headlineSmall,
+                  title: Row(
+                    children: [
+                      Text(
+                        _formatTime(alarm.hour, alarm.minute),
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      if (alarm.linkedTaskId != null) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.link,
+                          size: 18,
+                          color: Theme.of(context).colorScheme.secondary,
+                        ),
+                      ],
+                    ],
                   ),
                   subtitle: Text(
                     alarm.label.isEmpty
@@ -138,7 +174,10 @@ class AlarmListScreen extends StatelessWidget {
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => AlarmFormScreen(alarmService: alarmService),
+            builder: (_) => AlarmFormScreen(
+              alarmService: alarmService,
+              taskService: _currentTaskService(),
+            ),
           ));
         },
         child: const Icon(Icons.add),
