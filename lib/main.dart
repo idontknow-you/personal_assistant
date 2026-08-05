@@ -3,9 +3,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 import 'screens/auth_gate.dart';
-import 'package:alarm/alarm.dart';
 import 'services/alarms/alarm_service.dart';
 import 'services/alarms/alarm_ring_listener.dart';
+import 'theme/app_theme.dart';
 
 /// Global theme state — read/written from anywhere via themeNotifier / setThemeMode()
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.dark);
@@ -60,20 +60,11 @@ class PersonalOSApp extends StatelessWidget {
       valueListenable: themeNotifier,
       builder: (context, currentMode, _) {
         return MaterialApp(
-          navigatorKey: navigatorKey, // added — required for AlarmRingListener
+          navigatorKey: navigatorKey,
           title: 'Personal OS',
           debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.deepPurple,
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
+          theme: AppTheme.light,
+          darkTheme: AppTheme.dark,
           themeMode: currentMode,
           home: const AuthGate(),
         );

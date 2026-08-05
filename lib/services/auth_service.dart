@@ -7,7 +7,13 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
+  bool get isAnonymous => _auth.currentUser?.isAnonymous ?? true;
+
   Future<void> signInAnonymously() async {
     await _auth.signInAnonymously();
+  }
+
+  Future<void> signOut() async {
+    await _auth.signOut();
   }
 }
