@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel, MethodCall;
 import 'package:alarm/alarm.dart' as alarm_pkg;
 import '../../models/alarms/alarm.dart' as models;
 import '../../services/alarms/alarm_service.dart';
@@ -26,6 +27,28 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
     with WidgetsBindingObserver {
   bool _handled = false; // guards against double pop / double cleanup
 
+  // Controls PopScope's canPop. Starts false so the hardware/gesture back
+  // button can't dismiss the ring screen. Flipped to true right before any
+  // programmatic pop we trigger ourselves (Stop / Snooze / timeout), since
+  // canPop:false blocks ALL pops on this route -- not just the back button
+  // -- including Navigator.of(context).pop() calls from our own code.
+  bool _allowPop = false;
+
+  // Same channel MainActivity.kt already uses for moveTaskToBack /
+  // hasOverlayPermission etc. Reusing it rather than adding a second
+  // channel — it's just one more method name on the existing bridge.
+  static const _nativeChannel =
+      MethodChannel('com.example.personal_os/lockscreen');
+
+  // True once the volume-key silence has fired. Mutes the sound and swaps
+  // the UI into a "Silenced" state, but deliberately does NOT pop this
+  // screen or run _finalizeAndPop's bookkeeping — a volume-button bump
+  // (in a pocket, reaching for the phone, etc.) is a much easier accident
+  // than tapping Stop, so it shouldn't fully dismiss/disable the alarm.
+  // The user still has to hit Stop (or let the ring timeout fire) to
+  // actually close out.
+  bool _silenced = false;
+
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
 
@@ -42,11 +65,24 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
       widget.ringingSettings.notificationSettings.body ==
       AlarmRingMarkers.missedRetry;
 
+  /// How many times this ring cycle has already been snoozed, decoded from
+  /// the notification body (see AlarmRingMarkers.snoozed/snoozeCountFrom).
+  /// 0 for a fresh ring or a missed-retry ring — snooze count and the
+  /// missed-retry marker are mutually exclusive, so this never collides
+  /// with [_isRetryRing].
+  int get _snoozeCount =>
+      AlarmRingMarkers.snoozeCountFrom(widget.ringingSettings.notificationSettings.body);
+
+  static const _maxSnoozes = 3;
+
+  bool get _canSnooze => _snoozeCount < _maxSnoozes;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    _nativeChannel.setMethodCallHandler(_handleNativeCall);
 
     _ringTimeoutTimer = Timer(_ringTimeoutDuration, _handleRingTimeout);
 
@@ -62,7 +98,28 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
     WakelockPlus.disable();
     _clockTimer?.cancel();
     _ringTimeoutTimer?.cancel();
+    _nativeChannel.setMethodCallHandler(null);
     super.dispose();
+  }
+
+  Future<dynamic> _handleNativeCall(MethodCall call) async {
+    if (call.method == 'volumeKeyPressed') {
+      await _silenceOnly();
+    }
+    return null;
+  }
+
+  /// Mutes the ringing sound without dismissing the screen or running any
+  /// of the post-ring bookkeeping (unlike Stop). If it's already silenced,
+  /// a second volume-key press is a no-op — nothing left to silence.
+  Future<void> _silenceOnly() async {
+    if (_handled || _silenced) return;
+    setState(() => _silenced = true);
+    try {
+      await alarm_pkg.Alarm.stop(widget.ringingSettings.id);
+    } catch (_) {
+      // Already stopped — fine.
+    }
   }
 
   @override
@@ -83,6 +140,17 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
     if (!stillRinging) {
       await _finalizeAndPop();
     }
+  }
+
+  /// Flips _allowPop on and pops this route. Use this instead of a bare
+  /// `Navigator.of(context).pop()` anywhere in this screen -- with
+  /// PopScope's canPop normally false, a bare pop() is silently swallowed
+  /// (route stays on the stack, nothing visibly happens, and the app can
+  /// end up backgrounded over a ring screen that never actually closed).
+  void _popRoute() {
+    if (!mounted) return;
+    setState(() => _allowPop = true);
+    Navigator.of(context).pop();
   }
 
   /// Fired when the alarm has been ringing unanswered for
@@ -118,9 +186,7 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
       // Bookkeeping/retry-scheduling failure shouldn't trap the user here.
     }
 
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    _popRoute();
     await WidgetsBinding.instance.endOfFrame;
     await NativeBridge.moveTaskToBack();
   }
@@ -153,9 +219,7 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
       // Bookkeeping failure shouldn't trap the user on this screen.
     }
 
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    _popRoute();
 
     // Give Flutter one frame to commit the pop (and this screen's
     // dispose/WakelockPlus.disable) before backgrounding the task. With
@@ -178,20 +242,35 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
     await _finalizeAndPop();
   }
 
+  /// Snoozes this ring: cancels it and schedules a new one-shot ring
+  /// [duration] out, tagging the next ring's body with an incremented
+  /// snooze count so it (and only it) knows how many times this cycle
+  /// has been snoozed. Capped at [_maxSnoozes] — [_canSnooze] should be
+  /// checked before this is wired to a button, but it's also re-checked
+  /// here as a safety net.
+  ///
+  /// Deliberately does NOT go through the missed-retry bookkeeping path:
+  /// this is a direct user action, not a timeout, so it shouldn't count
+  /// toward or interact with the separate missed-alarm-retry counter.
   Future<void> _snooze(Duration duration) async {
-    if (_handled) return;
+    if (_handled || !_canSnooze) return;
     _handled = true;
     _ringTimeoutTimer?.cancel();
+
+    final nextCount = _snoozeCount + 1;
 
     await alarm_pkg.Alarm.set(
       alarmSettings: widget.ringingSettings.copyWith(
         dateTime: DateTime.now().add(duration),
+        notificationSettings: alarm_pkg.NotificationSettings(
+          title: widget.ringingSettings.notificationSettings.title,
+          body: AlarmRingMarkers.snoozed(nextCount),
+          stopButton: widget.ringingSettings.notificationSettings.stopButton,
+        ),
       ),
     );
 
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    _popRoute();
 
     await WidgetsBinding.instance.endOfFrame;
 
@@ -207,9 +286,10 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
   @override
   Widget build(BuildContext context) {
     final title = widget.ringingSettings.notificationSettings.title;
+    final remainingSnoozes = _maxSnoozes - _snoozeCount;
 
     return PopScope(
-      canPop: false, // force Stop/Snooze — no dismissing via back button
+      canPop: _allowPop, // was: false — see _popRoute() for why
       child: Scaffold(
         body: Container(
           width: double.infinity,
@@ -249,6 +329,19 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
                     ),
                   ),
 
+                  if (_silenced) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Silenced — tap Stop to dismiss',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.4),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+
                   const SizedBox(height: 14),
 
                   // Large glowing time display
@@ -284,16 +377,7 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
 
                   const Spacer(flex: 4),
 
-                  // Frosted-glass Snooze button
-                  _GlassButton(
-                    label: 'Snooze 5 min',
-                    icon: Icons.snooze_rounded,
-                    onTap: () => _snooze(const Duration(minutes: 5)),
-                    filled: false,
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Frosted-glass Stop button, accent-filled
+                  // Primary action: Stop (full-size, filled)
                   _GlassButton(
                     label: 'Stop',
                     icon: Icons.close_rounded,
@@ -301,7 +385,34 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
                     filled: true,
                   ),
 
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 10),
+
+                  // Secondary action: Snooze — smaller, plain text button,
+                  // capped at _maxSnoozes. Once used up, it's replaced by
+                  // a small note instead of a disabled button, so it's
+                  // clear this ring cycle is out of snoozes rather than
+                  // looking like a bug.
+                  SizedBox(
+                    height: 36,
+                    child: _canSnooze
+                        ? _SnoozeButton(
+                            label: remainingSnoozes < _maxSnoozes
+                                ? 'Snooze 5 min · $remainingSnoozes left'
+                                : 'Snooze 5 min',
+                            onTap: () => _snooze(const Duration(minutes: 5)),
+                          )
+                        : Center(
+                            child: Text(
+                              'No snoozes left for this alarm',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.35),
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                  ),
+
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -361,7 +472,7 @@ class _GlowDotState extends State<_GlowDot> with SingleTickerProviderStateMixin 
   }
 }
 
-/// Frosted-glass pill button used for both Stop and Snooze.
+/// Frosted-glass pill button used for the primary action (Stop).
 class _GlassButton extends StatelessWidget {
   const _GlassButton({
     required this.label,
@@ -415,6 +526,40 @@ class _GlassButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Plain, muted text button used for the secondary action (Snooze). No
+/// frosted glass or fill — intentionally quieter than Stop so it doesn't
+/// compete with it, since Stop is the action most people should default to.
+class _SnoozeButton extends StatelessWidget {
+  const _SnoozeButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onTap,
+      icon: Icon(
+        Icons.snooze_rounded,
+        size: 18,
+        color: Colors.white.withValues(alpha: 0.6),
+      ),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.6),
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
       ),
     );
   }

@@ -4,6 +4,7 @@ import '../../models/alarms/alarm.dart';
 import '../../services/alarms/alarm_service.dart';
 import '../../services/tasks/task_service.dart';
 import 'package:audioplayers/audioplayers.dart';
+import '../../widgets/alarms/time_wheel_picker.dart';
 
 class AlarmFormScreen extends StatefulWidget {
   const AlarmFormScreen({
@@ -61,6 +62,21 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
   bool get _isEditing => widget.existingAlarm != null;
   bool get _isLinkedToTask => widget.existingAlarm?.linkedTaskId != null;
 
+  /// True when this is a one-time alarm set for today, but the picked
+  /// hour/minute has already gone by — meaning AlarmService will silently
+  /// roll the date forward to tomorrow when it schedules. Surfaced as a
+  /// banner so the user isn't surprised by that behind-the-scenes shift.
+  bool get _isPastTimeToday {
+    if (_type != AlarmType.oneTime) return false;
+    final now = DateTime.now();
+    final isToday = _oneTimeDate.year == now.year &&
+        _oneTimeDate.month == now.month &&
+        _oneTimeDate.day == now.day;
+    if (!isToday) return false;
+    final picked = DateTime(now.year, now.month, now.day, _time.hour, _time.minute);
+    return picked.isBefore(now);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -95,12 +111,6 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
     _labelController.dispose();
     _previewPlayer.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickTime() async {
-    final picked = await showTimePicker(context: context, initialTime: _time);
-    if (!mounted) return;
-    if (picked != null) setState(() => _time = picked);
   }
 
   Future<void> _pickDate() async {
@@ -267,7 +277,44 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
     );
   }
 
+  Widget _pastTimeBanner() {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 20, color: theme.colorScheme.onErrorContainer),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'This time has already passed today — the alarm will ring '
+              'tomorrow instead.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onErrorContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
+    // Guard against double-tap: onPressed only gets disabled once setState
+    // triggers a rebuild, and there's a real gap between a tap and that
+    // rebuild landing. A second tap in that gap would otherwise re-enter
+    // _save() with a *different* fresh id (based on the new call's
+    // DateTime.now()), creating a second, separate Firestore doc instead
+    // of just re-running the same save. This check is synchronous and
+    // runs before anything else, so it closes that gap completely.
+    if (_saving) return;
     setState(() => _saving = true);
 
     try {
@@ -324,13 +371,11 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           if (_isLinkedToTask) _linkedTaskBanner(),
+          if (_isPastTimeToday) _pastTimeBanner(),
           Center(
-            child: TextButton(
-              onPressed: _pickTime,
-              child: Text(
-                _time.format(context),
-                style: Theme.of(context).textTheme.displaySmall,
-              ),
+            child: TimeWheelPicker(
+              initialTime: _time,
+              onChanged: (t) => setState(() => _time = t),
             ),
           ),
           const SizedBox(height: 16),

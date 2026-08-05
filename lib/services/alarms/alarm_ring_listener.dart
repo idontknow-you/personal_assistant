@@ -114,7 +114,7 @@ class AlarmRingListener with WidgetsBindingObserver {
       opaque: true,
       transitionDuration: Duration.zero,
       reverseTransitionDuration: Duration.zero,
-      pageBuilder: (_, __, ___) => AlarmRingScreen(
+      pageBuilder: (_, _, _) => AlarmRingScreen(
         ringingSettings: ringingSettings,
         alarmService: alarmService,
       ),

@@ -3,11 +3,28 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:alarm/alarm.dart' as alarm_pkg;
 import '../../models/alarms/alarm.dart';
 
-/// Marker used in a re-ring alarm's notification body so the ring screen
-/// can tell "this is the automatic 5-minute retry" apart from the original
-/// ring, and give up instead of retrying again if this one also times out.
+/// Markers used in a re-ring alarm's notification body so the ring screen
+/// can tell what KIND of ring this is, without needing any extra fields
+/// on AlarmSettings itself:
+///  - missedRetry: the automatic 5-minute retry after a ring timed out
+///    unanswered (see AlarmService.scheduleMissedRetry).
+///  - snoozed(n): the user tapped Snooze; n is how many times they've
+///    snoozed THIS ring cycle so far, so the ring screen can cap it.
+/// These two are mutually exclusive markers, both stored in the same
+/// body field the ring screen doesn't otherwise display.
 class AlarmRingMarkers {
   static const missedRetry = '__missed_retry__';
+
+  static const _snoozedPrefix = '__snoozed__:';
+
+  static String snoozed(int count) => '$_snoozedPrefix$count';
+
+  /// Returns the snooze count encoded in [body], or 0 if this ring isn't
+  /// a snoozed one (fresh ring, or a missed-retry ring).
+  static int snoozeCountFrom(String body) {
+    if (!body.startsWith(_snoozedPrefix)) return 0;
+    return int.tryParse(body.substring(_snoozedPrefix.length)) ?? 0;
+  }
 }
 
 /// Bridges an [AlarmModel] (our Firestore-backed data) to the native
@@ -151,10 +168,21 @@ class AlarmService {
         effectiveAlarm = alarm.copyWith(oneTimeDate: rolledDate);
         // Persist the corrected date directly on the doc (not via
         // saveAlarm, which would call back into scheduleAlarm and recurse).
+        //
+        // IMPORTANT: use set(..., merge: true) here, NOT update(). The
+        // caller (saveAlarm) fires off its own .set() write WITHOUT
+        // awaiting it (intentionally, to avoid a multi-second hang), then
+        // immediately calls scheduleAlarm — which means this write can
+        // reach Firestore before that first .set() has landed. update()
+        // requires the document to already exist and throws
+        // cloud_firestore/not-found if it doesn't yet; set(merge: true)
+        // creates the doc if missing and merges fields if it's already
+        // there, so it can't lose this race.
         final updatedMap = effectiveAlarm.toMap();
-        await _alarmsCollection
-            .doc(alarm.id.toString())
-            .update({'oneTimeDate': updatedMap['oneTimeDate']});
+        await _alarmsCollection.doc(alarm.id.toString()).set(
+          {'oneTimeDate': updatedMap['oneTimeDate']},
+          SetOptions(merge: true),
+        );
       }
     }
 
