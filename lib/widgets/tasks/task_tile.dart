@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/tasks/task.dart';
+import '../../theme/app_theme.dart';
 
 class TaskTile extends StatelessWidget {
   const TaskTile({
@@ -8,12 +9,19 @@ class TaskTile extends StatelessWidget {
     required this.onToggle,
     required this.onDismissed,
     this.onEdit,
+    this.onSubtaskToggle,
+    this.onShowHistory,
   });
 
   final Task task;
   final VoidCallback onToggle;
   final VoidCallback onDismissed;
   final VoidCallback? onEdit;
+  final void Function(String subtaskId, bool isCompleted)? onSubtaskToggle;
+
+  /// Opens the completion-history sheet (backdating). Parent owns
+  /// TaskService, so this stays a plain callback like the others.
+  final VoidCallback? onShowHistory;
 
   bool get _isOverdue {
     if (task.completed || task.dueDate == null) return false;
@@ -55,6 +63,7 @@ class TaskTile extends StatelessWidget {
     final theme = Theme.of(context);
     final dueLabel = _dueDateLabel();
     final repeatLabel = _repeatLabel();
+    final priorityColor = AppColors.priorityColor(task.priority.name);
 
     return Dismissible(
       key: Key(task.id),
@@ -65,67 +74,126 @@ class TaskTile extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-      onDismissed: (_) => onDismissed(),
-      child: CheckboxListTile(
-        value: task.completed,
-        onChanged: (_) => onToggle(),
-        controlAffinity: ListTileControlAffinity.leading,
-        title: Text(
-          task.title,
-          style: TextStyle(
-            decoration: task.completed ? TextDecoration.lineThrough : null,
-            color: task.completed ? Colors.grey : null,
-          ),
+      confirmDismiss: (_) async {
+        onDismissed();
+        return false;
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: priorityColor, width: 3)),
         ),
-        subtitle: (dueLabel != null || repeatLabel != null)
-            ? Row(
-                children: [
-                  if (dueLabel != null)
-                    Text(
-                      dueLabel,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: _isOverdue
-                            ? theme.colorScheme.error
-                            : theme.colorScheme.onSurfaceVariant,
-                        fontWeight: _isOverdue ? FontWeight.w600 : null,
-                      ),
-                    ),
-                  if (dueLabel != null && repeatLabel != null)
-                    Text(
-                      '  ·  ',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  if (repeatLabel != null)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CheckboxListTile(
+              value: task.completed,
+              onChanged: (_) => onToggle(),
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(
+                task.title,
+                style: TextStyle(
+                  decoration:
+                      task.completed ? TextDecoration.lineThrough : null,
+                  color: task.completed ? Colors.grey : null,
+                ),
+              ),
+              subtitle: (dueLabel != null || repeatLabel != null)
+                  ? Row(
                       children: [
-                        Icon(Icons.repeat, size: 12, color: theme.colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 2),
-                        Text(
-                          repeatLabel,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        if (dueLabel != null)
+                          Text(
+                            dueLabel,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: _isOverdue
+                                  ? theme.colorScheme.error
+                                  : theme.colorScheme.onSurfaceVariant,
+                              fontWeight: _isOverdue ? FontWeight.w600 : null,
+                            ),
+                          ),
+                        if (dueLabel != null && repeatLabel != null)
+                          Text(
+                            '  ·  ',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        if (repeatLabel != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.repeat,
+                                  size: 12,
+                                  color: theme.colorScheme.onSurfaceVariant),
+                              const SizedBox(width: 2),
+                              Text(
+                                repeatLabel,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    )
+                  : null,
+              secondary: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (task.linkedAlarmId != null)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 4),
+                      child: Icon(Icons.alarm, size: 20),
+                    ),
+                  if (onShowHistory != null)
+                    IconButton(
+                      icon: const Icon(Icons.event_note, size: 20),
+                      tooltip: 'History',
+                      onPressed: onShowHistory,
+                    ),
+                  if (onEdit != null)
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      onPressed: onEdit,
+                    ),
+                ],
+              ),
+            ),
+            if (task.subtasks.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 32, right: 16, bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: task.subtasks.map((sub) {
+                    return Row(
+                      children: [
+                        SizedBox(
+                          height: 32,
+                          width: 32,
+                          child: Checkbox(
+                            value: sub.isCompleted,
+                            onChanged: onSubtaskToggle == null
+                                ? null
+                                : (val) =>
+                                    onSubtaskToggle!(sub.id, val ?? false),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            sub.title,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppColors.textSecondary,
+                              decoration: sub.isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
                           ),
                         ),
                       ],
-                    ),
-                ],
-              )
-            : null,
-        secondary: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (task.linkedAlarmId != null)
-              const Padding(
-                padding: EdgeInsets.only(right: 4),
-                child: Icon(Icons.alarm, size: 20),
-              ),
-            if (onEdit != null)
-              IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 20),
-                onPressed: onEdit,
+                    );
+                  }).toList(),
+                ),
               ),
           ],
         ),

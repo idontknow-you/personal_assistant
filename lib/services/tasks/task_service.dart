@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/tasks/task.dart';
+import '../../utils/date_utils.dart';
 import '../alarms/alarm_service.dart';
 
 class TaskService {
@@ -34,22 +35,20 @@ class TaskService {
   }
 
   /// Streams the global streak doc — {currentStreak, bestStreak,
-  /// lastCheckedDate}. Not consumed by any UI yet; wired up so a streak
-  /// display can be added later without touching this layer again.
+  /// lastCheckedDate}.
   Stream<Map<String, dynamic>> watchStreak() {
     return _streakDocRef.snapshots().map(
           (doc) => doc.data() ?? {'currentStreak': 0, 'bestStreak': 0},
         );
   }
 
-  /// Returns the new task's Firestore doc id, so callers (e.g. the task
-  /// form, when also creating a linked alarm) can reference it immediately
-  /// without a round-trip re-read.
   Future<String> addTask(
     String title, {
     Timestamp? dueDate,
     TaskRepeatType repeatType = TaskRepeatType.none,
     Set<int> repeatDays = const {},
+    Priority priority = Priority.medium,
+    List<Subtask> subtasks = const [],
   }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return '';
@@ -62,6 +61,9 @@ class TaskService {
       'repeatType': repeatType.name,
       'repeatDays': repeatDays.toList(),
       'linkedAlarmId': null,
+      'priority': priority.name,
+      'subtasks': subtasks.map((s) => s.toMap()).toList(),
+      'completionLog': <String, bool>{},
     });
     return doc.id;
   }
@@ -70,15 +72,10 @@ class TaskService {
     await _tasksRef.doc(task.id).update(task.toMap());
   }
 
-  /// Patches only linkedAlarmId — used right after creating a brand-new
-  /// task's linked alarm, where we don't have the full Task object with all
-  /// its other fields intact to safely round-trip through updateTask.
   Future<void> setLinkedAlarm(String taskId, int alarmId) async {
     await _tasksRef.doc(taskId).update({'linkedAlarmId': alarmId});
   }
 
-  /// Clears linkedAlarmId on a task without touching anything else — used
-  /// when the alarm itself is deleted from the Alarms tab.
   Future<void> clearLinkedAlarm(String taskId) async {
     await _tasksRef.doc(taskId).update({'linkedAlarmId': null});
   }
@@ -89,17 +86,39 @@ class TaskService {
     return Task.fromFirestore(doc);
   }
 
-  /// Toggles completion AND silences/re-arms the linked alarm to match —
-  /// takes the full [Task] (not just id/bool) since we need linkedAlarmId.
-  /// Completing early silences the reminder (isEnabled: false) rather than
-  /// deleting it, since a repeating task's alarm needs to still exist for
-  /// its *next* occurrence. Un-completing re-arms it. Rollover (below) also
-  /// re-arms it when a repeating task's period resets, in case it's still
-  /// silenced from an earlier completion.
+  Future<void> toggleSubtask(
+    String taskId,
+    String subtaskId,
+    bool isCompleted,
+  ) async {
+    final task = await getTask(taskId);
+    if (task == null) return;
+
+    final updatedSubtasks = task.subtasks
+        .map((s) =>
+            s.id == subtaskId ? s.copyWith(isCompleted: isCompleted) : s)
+        .toList();
+
+    await _tasksRef.doc(taskId).update({
+      'subtasks': updatedSubtasks.map((s) => s.toMap()).toList(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Toggles completion for the task's *current* active period (its
+  /// dueDate, or today if no dueDate is set) and silences/re-arms the
+  /// linked alarm to match. Also writes the same result into
+  /// [Task.completionLog] under that date's key, so history/streak/heatmap
+  /// stay consistent with what the checkbox shows without a separate write.
   Future<void> toggleComplete(Task task) async {
     final newCompleted = !task.completed;
+    final logDate = task.dueDate?.toDate() ?? DateTime.now();
+    final key = dateKey(logDate);
+    final updatedLog = {...task.completionLog, key: newCompleted};
+
     await _tasksRef.doc(task.id).update({
       'completed': newCompleted,
+      'completionLog': updatedLog,
       'updatedAt': FieldValue.serverTimestamp(),
     });
 
@@ -115,9 +134,50 @@ class TaskService {
     }
   }
 
-  /// Takes the full [Task] (not just its id) so a linked alarm can be
-  /// cancelled and removed at the same time — deleting a task shouldn't
-  /// leave an orphaned alarm still ringing later.
+  /// Marks (or unmarks) completion for an ARBITRARY date — past, present,
+  /// or future — without requiring that date to be the task's current
+  /// active period. This is what fixes backdating: e.g. you forgot to
+  /// check off a daily task three days ago, rollover already advanced past
+  /// it, but you can still open its history and mark that day done.
+  ///
+  /// Only writes into [completionLog]. If [date] happens to equal the
+  /// task's current dueDate, it ALSO updates the live `completed` field
+  /// (and alarm silencing) so the checkbox on the tile stays in sync —
+  /// otherwise the two would visibly disagree. Backdated entries for any
+  /// other date only affect history/streak, never the live checkbox.
+  Future<void> setCompletionForDate(
+    Task task,
+    DateTime date,
+    bool completed,
+  ) async {
+    final key = dateKey(date);
+    final updatedLog = {...task.completionLog, key: completed};
+
+    final isActivePeriod = task.dueDate != null &&
+        isSameDay(task.dueDate!.toDate(), date);
+
+    final update = <String, dynamic>{
+      'completionLog': updatedLog,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (isActivePeriod) {
+      update['completed'] = completed;
+    }
+
+    await _tasksRef.doc(task.id).update(update);
+
+    if (!isActivePeriod || task.linkedAlarmId == null || alarmService == null) {
+      return;
+    }
+    final alarm = await alarmService!.getAlarm(task.linkedAlarmId!);
+    if (alarm == null) return;
+    if (completed && alarm.isEnabled) {
+      await alarmService!.saveAlarm(alarm.copyWith(isEnabled: false));
+    } else if (!completed && !alarm.isEnabled) {
+      await alarmService!.saveAlarm(alarm.copyWith(isEnabled: true));
+    }
+  }
+
   Future<void> deleteTask(Task task) async {
     if (task.linkedAlarmId != null && alarmService != null) {
       await alarmService!.deleteAlarm(task.linkedAlarmId!);
@@ -127,35 +187,34 @@ class TaskService {
 
   // ---------------- Daily rollover + streak ----------------
 
-  /// Call once when the app opens (e.g. from TaskListPage.initState).
-  /// Does two things in one pass over "tasks due yesterday":
-  ///   1. Updates the global day-level streak: if every task due yesterday
-  ///      was completed, streak++; if any were missed, streak resets to 0.
-  ///      If nothing was due yesterday, the streak is untouched either way.
-  ///   2. Rolls forward any *repeating* tasks in that set: resets
-  ///      completed to false and advances dueDate to the next occurrence.
-  ///      Non-repeating tasks due yesterday are left as-is (still shown as
-  ///      overdue/incomplete) — nothing here deletes or clears them.
+  /// Call once when the app opens. Two things in one pass over "tasks due
+  /// yesterday":
+  ///   1. Updates the global day-level streak — now reads
+  ///      [Task.completionLog] for yesterday's key rather than the live
+  ///      `completed` field, falling back to `completed` if the log has no
+  ///      entry yet (covers tasks toggled before this field existed). This
+  ///      is what makes a backdated completion actually count toward the
+  ///      streak even if it's logged after rollover already ran once.
+  ///   2. Rolls forward repeating tasks: resets completed to false and
+  ///      advances dueDate to the next occurrence, but first makes sure
+  ///      yesterday's result is captured in completionLog before it resets.
   ///
-  /// LIMITATION: this only ever checks "yesterday relative to today," once
-  /// per calendar day the app is opened. If the app isn't opened for
-  /// several days in a row, only the most recent missed day is evaluated —
-  /// earlier gaps are silently skipped rather than retroactively breaking
-  /// the streak multiple times. Good enough for now; a more thorough
-  /// version would walk every day between lastCheckedDate and today.
+  /// LIMITATION: only ever checks "yesterday relative to today," once per
+  /// calendar day the app is opened — a multi-day gap only evaluates the
+  /// most recent missed day for streak purposes. completionLog itself has
+  /// no such gap since it's written directly by toggleComplete /
+  /// setCompletionForDate regardless of rollover.
   Future<void> runDailyRollover() async {
     final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayStart = startOfDay(now);
     final yesterdayStart = todayStart.subtract(const Duration(days: 1));
+    final yesterdayKey = dateKey(yesterdayStart);
 
     final streakSnap = await _streakDocRef.get();
     final streakData = streakSnap.data();
     final lastChecked = (streakData?['lastCheckedDate'] as Timestamp?)?.toDate();
 
-    if (lastChecked != null &&
-        lastChecked.year == todayStart.year &&
-        lastChecked.month == todayStart.month &&
-        lastChecked.day == todayStart.day) {
+    if (lastChecked != null && isSameDay(lastChecked, todayStart)) {
       return; // already ran today
     }
 
@@ -168,7 +227,9 @@ class TaskService {
     final tasksDueYesterday = snap.docs.map(Task.fromFirestore).toList();
 
     if (tasksDueYesterday.isNotEmpty) {
-      final allCompleted = tasksDueYesterday.every((t) => t.completed);
+      final allCompleted = tasksDueYesterday.every(
+        (t) => t.completionLog[yesterdayKey] ?? t.completed,
+      );
       final currentStreak = (streakData?['currentStreak'] as int?) ?? 0;
       final bestStreak = (streakData?['bestStreak'] as int?) ?? 0;
       final newStreak = allCompleted ? currentStreak + 1 : 0;
@@ -179,9 +240,6 @@ class TaskService {
         'lastCheckedDate': Timestamp.fromDate(todayStart),
       }, SetOptions(merge: true));
     } else {
-      // Nothing was due yesterday — neither builds nor breaks the streak.
-      // Still record that today's check ran, so it doesn't re-run
-      // repeatedly within the same day.
       await _streakDocRef.set({
         'lastCheckedDate': Timestamp.fromDate(todayStart),
       }, SetOptions(merge: true));
@@ -190,10 +248,19 @@ class TaskService {
     for (final task in tasksDueYesterday) {
       if (task.repeatType == TaskRepeatType.none) continue;
 
+      // Make sure yesterday's result is captured before it resets — if
+      // toggleComplete already logged it this is a no-op overwrite with
+      // the same value; if it wasn't toggled at all, this records a miss.
+      final updatedLog = {
+        ...task.completionLog,
+        yesterdayKey: task.completionLog[yesterdayKey] ?? task.completed,
+      };
+
       final nextDue = _nextOccurrence(task, from: todayStart);
       await _tasksRef.doc(task.id).update({
         'completed': false,
         'dueDate': Timestamp.fromDate(nextDue),
+        'completionLog': updatedLog,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -208,16 +275,14 @@ class TaskService {
 
   DateTime _nextOccurrence(Task task, {required DateTime from}) {
     if (task.repeatType == TaskRepeatType.daily) {
-      return from; // due again today
+      return from;
     }
-    // Weekly: walk forward from `from` (inclusive) to the next matching day.
     for (int offset = 0; offset < 7; offset++) {
       final day = from.add(Duration(days: offset));
       if (task.repeatDays.contains(day.weekday)) {
         return DateTime(day.year, day.month, day.day);
       }
     }
-    // Unreachable if repeatDays is non-empty, but keeps the analyzer happy.
     return from;
   }
 }

@@ -2,6 +2,38 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum TaskRepeatType { none, daily, weekly }
 
+enum Priority { low, medium, high }
+
+class Subtask {
+  final String id;
+  final String title;
+  final bool isCompleted;
+
+  Subtask({
+    required this.id,
+    required this.title,
+    this.isCompleted = false,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'title': title,
+        'isCompleted': isCompleted,
+      };
+
+  factory Subtask.fromMap(Map<String, dynamic> map) => Subtask(
+        id: map['id'] as String? ?? '',
+        title: map['title'] as String? ?? '',
+        isCompleted: map['isCompleted'] as bool? ?? false,
+      );
+
+  Subtask copyWith({String? title, bool? isCompleted}) => Subtask(
+        id: id,
+        title: title ?? this.title,
+        isCompleted: isCompleted ?? this.isCompleted,
+      );
+}
+
 class Task {
   final String id;
   final String title;
@@ -27,6 +59,18 @@ class Task {
   /// linked to this task, if the user set one. Null = no reminder.
   final int? linkedAlarmId;
 
+  final Priority priority;
+
+  final List<Subtask> subtasks;
+
+  /// Per-day completion history, keyed by "yyyy-MM-dd" (see date_utils.dart).
+  /// This is the source of truth for streaks/heatmap/stats — [completed]
+  /// only reflects the *current* period and gets reset by rollover, but
+  /// entries here persist. Also what makes backdating possible: marking a
+  /// past date done writes here without touching [completed] or [dueDate]
+  /// unless that date is the task's current active period.
+  final Map<String, bool> completionLog;
+
   Task({
     required this.id,
     required this.title,
@@ -37,6 +81,9 @@ class Task {
     this.repeatType = TaskRepeatType.none,
     this.repeatDays = const {},
     this.linkedAlarmId,
+    this.priority = Priority.medium,
+    this.subtasks = const [],
+    this.completionLog = const {},
   });
 
   factory Task.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -53,6 +100,18 @@ class Task {
       ),
       repeatDays: Set<int>.from(data['repeatDays'] as List? ?? []),
       linkedAlarmId: data['linkedAlarmId'] as int?,
+      // Defensive: old docs written before this field existed won't have
+      // it, so fall back to medium rather than throwing on an unknown name.
+      priority: Priority.values.firstWhere(
+        (p) => p.name == data['priority'],
+        orElse: () => Priority.medium,
+      ),
+      subtasks: (data['subtasks'] as List<dynamic>? ?? [])
+          .map((s) => Subtask.fromMap(Map<String, dynamic>.from(s as Map)))
+          .toList(),
+      completionLog: Map<String, bool>.from(
+        (data['completionLog'] as Map<dynamic, dynamic>? ?? {}),
+      ),
     );
   }
 
@@ -66,6 +125,9 @@ class Task {
       'repeatType': repeatType.name,
       'repeatDays': repeatDays.toList(),
       'linkedAlarmId': linkedAlarmId,
+      'priority': priority.name,
+      'subtasks': subtasks.map((s) => s.toMap()).toList(),
+      'completionLog': completionLog,
     };
   }
 
@@ -81,6 +143,9 @@ class Task {
     Set<int>? repeatDays,
     int? linkedAlarmId,
     bool clearLinkedAlarmId = false,
+    Priority? priority,
+    List<Subtask>? subtasks,
+    Map<String, bool>? completionLog,
   }) {
     assert(
       !(dueDate != null && clearDueDate),
@@ -102,6 +167,9 @@ class Task {
       repeatDays: repeatDays ?? this.repeatDays,
       linkedAlarmId:
           clearLinkedAlarmId ? null : (linkedAlarmId ?? this.linkedAlarmId),
+      priority: priority ?? this.priority,
+      subtasks: subtasks ?? this.subtasks,
+      completionLog: completionLog ?? this.completionLog,
     );
   }
 }

@@ -3,8 +3,11 @@ import '../../models/tasks/task.dart';
 import '../../services/tasks/task_service.dart';
 import '../../services/alarms/alarm_service.dart';
 import '../../widgets/tasks/task_tile.dart';
-import '../../widgets/common/theme_toggle_switch.dart';
+import '../../widgets/tasks/completion_history_sheet.dart';
+import '../settings/settings_screen.dart';
 import 'task_form_screen.dart';
+import 'task_stats_screen.dart';
+import 'task_calendar_screen.dart';
 
 enum TaskFilter { all, today, overdue, completed }
 
@@ -26,9 +29,6 @@ class _TaskListPageState extends State<TaskListPage> {
   void initState() {
     super.initState();
     _taskService = TaskService(widget.uid, alarmService: widget.alarmService);
-    // Fire-and-forget: checks yesterday's streak + rolls forward any
-    // repeating tasks whose period has ended. Safe to call every time this
-    // page opens — it no-ops if it already ran today.
     _taskService.runDailyRollover();
   }
 
@@ -86,6 +86,30 @@ class _TaskListPageState extends State<TaskListPage> {
     );
   }
 
+  void _openStats() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TaskStatsScreen(taskService: _taskService),
+      ),
+    );
+  }
+
+  void _openCalendar() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TaskCalendarScreen(taskService: _taskService),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SettingsScreen(),
+      ),
+    );
+  }
+
   bool _isToday(Task t) {
     if (t.dueDate == null) return false;
     final due = t.dueDate!.toDate();
@@ -110,8 +134,6 @@ class _TaskListPageState extends State<TaskListPage> {
       case TaskFilter.completed:
         return tasks.where((t) => t.completed).toList();
       case TaskFilter.all:
-        // Show pending first, completed pushed to the bottom rather than
-        // hidden — nothing gets deleted or excluded, just deprioritized.
         final pending = tasks.where((t) => !t.completed).toList();
         final done = tasks.where((t) => t.completed).toList();
         return [...pending, ...done];
@@ -181,8 +203,9 @@ class _TaskListPageState extends State<TaskListPage> {
                 Text(
                   'Your streak counts consecutive days where every task due '
                   'that day was completed. Missing even one task due on a '
-                  'given day resets it to 0. Tasks with no due date set don\'t '
-                  'count toward this — only tasks you\'ve scheduled.',
+                  'given day resets it to 0. You can backdate a missed day '
+                  'from a task\'s history icon and it\'ll still count. Tasks '
+                  'with no due date set don\'t count toward this.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -209,6 +232,16 @@ class _TaskListPageState extends State<TaskListPage> {
       appBar: AppBar(
         title: const Text('Tasks'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_month),
+            tooltip: 'Calendar',
+            onPressed: _openCalendar,
+          ),
+          IconButton(
+            icon: const Icon(Icons.bar_chart),
+            tooltip: 'Stats',
+            onPressed: _openStats,
+          ),
           StreamBuilder<Map<String, dynamic>>(
             stream: _taskService.watchStreak(),
             builder: (context, snapshot) {
@@ -236,7 +269,11 @@ class _TaskListPageState extends State<TaskListPage> {
               );
             },
           ),
-          const ThemeToggleSwitch(),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: _openSettings,
+          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -294,6 +331,13 @@ class _TaskListPageState extends State<TaskListPage> {
                       onToggle: () => _taskService.toggleComplete(task),
                       onDismissed: () => _taskService.deleteTask(task),
                       onEdit: () => _openTaskForm(existingTask: task),
+                      onSubtaskToggle: (subtaskId, isCompleted) =>
+                          _taskService.toggleSubtask(task.id, subtaskId, isCompleted),
+                      onShowHistory: () => CompletionHistorySheet.show(
+                        context,
+                        task: task,
+                        taskService: _taskService,
+                      ),
                     );
                   },
                 );

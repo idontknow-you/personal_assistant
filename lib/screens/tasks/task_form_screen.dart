@@ -4,6 +4,7 @@ import '../../models/tasks/task.dart';
 import '../../models/alarms/alarm.dart' as alarm_model;
 import '../../services/tasks/task_service.dart';
 import '../../services/alarms/alarm_service.dart';
+import '../../theme/app_theme.dart';
 
 class TaskFormScreen extends StatefulWidget {
   const TaskFormScreen({
@@ -29,9 +30,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   };
 
   late TextEditingController _titleController;
+  late TextEditingController _subtaskInputController;
   DateTime? _dueDate;
   TaskRepeatType _repeatType = TaskRepeatType.none;
   Set<int> _repeatDays = {};
+  Priority _priority = Priority.medium;
+  List<Subtask> _subtasks = [];
 
   bool _reminderEnabled = false;
   TimeOfDay _reminderTime = const TimeOfDay(hour: 9, minute: 0);
@@ -50,9 +54,12 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     super.initState();
     final t = widget.existingTask;
     _titleController = TextEditingController(text: t?.title ?? '');
+    _subtaskInputController = TextEditingController();
     _dueDate = t?.dueDate?.toDate();
     _repeatType = t?.repeatType ?? TaskRepeatType.none;
     _repeatDays = {...(t?.repeatDays ?? const {})};
+    _priority = t?.priority ?? Priority.medium;
+    _subtasks = [...(t?.subtasks ?? const [])];
 
     if (t?.linkedAlarmId != null) {
       _loadingAlarm = true;
@@ -73,6 +80,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _subtaskInputController.dispose();
     super.dispose();
   }
 
@@ -108,6 +116,35 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     });
   }
 
+  void _addSubtask() {
+    final title = _subtaskInputController.text.trim();
+    if (title.isEmpty) return;
+    setState(() {
+      _subtasks = [
+        ..._subtasks,
+        Subtask(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          title: title,
+        ),
+      ];
+      _subtaskInputController.clear();
+    });
+  }
+
+  void _removeSubtask(String id) {
+    setState(() {
+      _subtasks = _subtasks.where((s) => s.id != id).toList();
+    });
+  }
+
+  void _toggleSubtaskLocal(String id, bool value) {
+    setState(() {
+      _subtasks = _subtasks
+          .map((s) => s.id == id ? s.copyWith(isCompleted: value) : s)
+          .toList();
+    });
+  }
+
   bool get _canSave {
     if (_titleController.text.trim().isEmpty) return false;
     if (_repeatType == TaskRepeatType.weekly && _repeatDays.isEmpty) {
@@ -125,6 +162,15 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   Future<void> _save() async {
+    // Guard against double-tap re-entrancy: onPressed only gets disabled
+    // once setState below triggers a rebuild, and there's a real gap
+    // between a tap and that rebuild landing. A second tap in that gap
+    // would otherwise re-enter _save() and create a SECOND task doc (via
+    // addTask, which always allocates a fresh Firestore id) plus a SECOND
+    // alarm (via a freshly computed id in the reminder block below) —
+    // this is exactly what produced duplicate tasks/alarms. This check is
+    // synchronous and runs before anything else, so it closes that gap.
+    if (_saving) return;
     if (!_canSave) return;
     setState(() => _saving = true);
 
@@ -145,6 +191,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           dueDate: dueTimestamp,
           repeatType: _repeatType,
           repeatDays: _repeatDays,
+          priority: _priority,
+          subtasks: _subtasks,
         );
       }
 
@@ -203,6 +251,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           repeatDays: _repeatType == TaskRepeatType.weekly ? _repeatDays : {},
           linkedAlarmId: linkedAlarmId,
           clearLinkedAlarmId: linkedAlarmId == null,
+          priority: _priority,
+          subtasks: _subtasks,
         );
         await widget.taskService.updateTask(updated);
       } else if (linkedAlarmId != null) {
@@ -242,6 +292,30 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 24),
+                Text('Priority', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                SegmentedButton<Priority>(
+                  segments: [
+                    ButtonSegment(
+                      value: Priority.low,
+                      label: const Text('Low'),
+                      icon: Icon(Icons.circle, size: 10, color: AppColors.priorityLow),
+                    ),
+                    ButtonSegment(
+                      value: Priority.medium,
+                      label: const Text('Medium'),
+                      icon: Icon(Icons.circle, size: 10, color: AppColors.priorityMedium),
+                    ),
+                    ButtonSegment(
+                      value: Priority.high,
+                      label: const Text('High'),
+                      icon: Icon(Icons.circle, size: 10, color: AppColors.priorityHigh),
+                    ),
+                  ],
+                  selected: {_priority},
+                  onSelectionChanged: (s) => setState(() => _priority = s.first),
+                ),
+                const Divider(height: 32),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Due date'),
@@ -293,6 +367,56 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     }).toList(),
                   ),
                 ],
+                const Divider(height: 32),
+                Text('Subtasks', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                ..._subtasks.map((sub) => Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Row(
+                        children: [
+                          Checkbox(
+                            value: sub.isCompleted,
+                            onChanged: (val) => _toggleSubtaskLocal(sub.id, val!),
+                          ),
+                          Expanded(
+                            child: Text(
+                              sub.title,
+                              style: TextStyle(
+                                decoration: sub.isCompleted
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color: sub.isCompleted
+                                    ? AppColors.textSecondary
+                                    : null,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => _removeSubtask(sub.id),
+                          ),
+                        ],
+                      ),
+                    )),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _subtaskInputController,
+                        decoration: const InputDecoration(
+                          hintText: 'Add a subtask',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        onSubmitted: (_) => _addSubtask(),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: _addSubtask,
+                    ),
+                  ],
+                ),
                 const Divider(height: 32),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
