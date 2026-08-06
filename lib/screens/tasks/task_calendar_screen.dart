@@ -232,6 +232,8 @@ class _TaskCalendarScreenState extends State<TaskCalendarScreen> {
               }
               final tasks = taskSnapshot.data ?? [];
               final habits = habitSnapshot.data ?? [];
+              final now = DateTime.now();
+              final today = DateTime(now.year, now.month, now.day);
 
               final Map<String, List<Task>> byDayTasks = {};
               for (final task in tasks) {
@@ -333,15 +335,18 @@ class _TaskCalendarScreenState extends State<TaskCalendarScreen> {
                                 ),
                                 ...selectedTasks.map((task) {
                                   final done = _statusOn(task, _selectedDay) ?? false;
+                                  final isFuture = _selectedDay.isAfter(today);
                                   return DayAgendaTile(
                                     task: task,
                                     day: _selectedDay,
                                     completed: done,
-                                    onToggle: () => widget.taskService.setCompletionForDate(
-                                      task,
-                                      _selectedDay,
-                                      !done,
-                                    ),
+                                    onToggle: isFuture
+                                        ? null
+                                        : () => widget.taskService.setCompletionForDate(
+                                              task,
+                                              _selectedDay,
+                                              !done,
+                                            ),
                                   );
                                 }),
                               ],
@@ -352,14 +357,17 @@ class _TaskCalendarScreenState extends State<TaskCalendarScreen> {
                                 ),
                                 ...selectedHabits.map((habit) {
                                   final status = _habitStatusOn(habit, _selectedDay);
+                                  final isFuture = _selectedDay.isAfter(today);
                                   return _HabitAgendaTile(
                                     habit: habit,
                                     status: status,
                                     statusColor: _habitStatusColor(status),
-                                    onTap: () => widget.habitService.cycleStatus(
-                                      habit,
-                                      _selectedDay,
-                                    ),
+                                    onTap: isFuture
+                                        ? null
+                                        : () => widget.habitService.cycleStatus(
+                                              habit,
+                                              _selectedDay,
+                                            ),
                                   );
                                 }),
                               ],
@@ -407,9 +415,13 @@ class _HabitAgendaTile extends StatelessWidget {
   final Habit habit;
   final HabitDayStatus? status;
   final Color statusColor;
-  final VoidCallback onTap;
+
+  /// Null for future days — you can't mark a habit done/skipped/missed for
+  /// a day that hasn't happened yet.
+  final VoidCallback? onTap;
 
   String _statusLabel() {
+    if (onTap == null) return 'Not due yet';
     switch (status) {
       case HabitDayStatus.done:
         return 'Done';
@@ -438,6 +450,7 @@ class _HabitAgendaTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final icon = _statusIcon();
+    final isFuture = onTap == null;
     return ListTile(
       onTap: onTap,
       leading: Container(
@@ -445,13 +458,18 @@ class _HabitAgendaTile extends StatelessWidget {
         height: 28,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: statusColor,
+          color: isFuture ? statusColor.withOpacity(0.3) : statusColor,
         ),
         child: icon != null
             ? Icon(icon, size: 16, color: Colors.white)
             : null,
       ),
-      title: Text(habit.name),
+      title: Text(
+        habit.name,
+        style: isFuture
+            ? TextStyle(color: theme.colorScheme.onSurfaceVariant)
+            : null,
+      ),
       subtitle: Text(_statusLabel()),
       trailing: habit.currentStreak > 0
           ? Row(

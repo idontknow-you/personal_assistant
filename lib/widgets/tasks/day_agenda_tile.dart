@@ -8,6 +8,10 @@ import '../../models/tasks/task.dart';
 /// should go through TaskService.setCompletionForDate rather than
 /// toggleComplete, since the day shown here may not be the task's current
 /// active period.
+///
+/// [onToggle] is nullable — pass null for days in the future, since you
+/// can't mark something done that hasn't happened yet. When null, the
+/// checkbox renders disabled rather than silently doing nothing on tap.
 class DayAgendaTile extends StatelessWidget {
   const DayAgendaTile({
     super.key,
@@ -20,7 +24,7 @@ class DayAgendaTile extends StatelessWidget {
   final Task task;
   final DateTime day;
   final bool completed;
-  final VoidCallback onToggle;
+  final VoidCallback? onToggle;
 
   Color _priorityColor(ColorScheme scheme) {
     switch (task.priority) {
@@ -48,6 +52,7 @@ class DayAgendaTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final repeatLabel = _repeatLabel();
+    final isFuture = onToggle == null;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -62,18 +67,23 @@ class DayAgendaTile extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         leading: Checkbox(
           value: completed,
-          onChanged: (_) => onToggle(),
+          onChanged: onToggle == null ? null : (_) => onToggle!(),
         ),
         title: Text(
           task.title,
           style: theme.textTheme.bodyLarge?.copyWith(
             decoration: completed ? TextDecoration.lineThrough : null,
-            color: completed ? theme.colorScheme.onSurfaceVariant : null,
+            color: completed
+                ? theme.colorScheme.onSurfaceVariant
+                : (isFuture ? theme.colorScheme.onSurfaceVariant : null),
           ),
         ),
-        subtitle: repeatLabel != null
+        subtitle: (isFuture || repeatLabel != null)
             ? Text(
-                repeatLabel,
+                [
+                  if (isFuture) 'Not due yet',
+                  if (repeatLabel != null) repeatLabel,
+                ].join(' · '),
                 style: theme.textTheme.bodySmall
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               )
