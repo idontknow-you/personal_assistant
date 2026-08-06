@@ -47,7 +47,7 @@ class TaskService {
     Timestamp? dueDate,
     TaskRepeatType repeatType = TaskRepeatType.none,
     Set<int> repeatDays = const {},
-    Priority priority = Priority.medium,
+    Priority priority = Priority.low,
     List<Subtask> subtasks = const [],
   }) async {
     final trimmed = title.trim();
@@ -141,10 +141,20 @@ class TaskService {
   /// it, but you can still open its history and mark that day done.
   ///
   /// Only writes into [completionLog]. If [date] happens to equal the
-  /// task's current dueDate, it ALSO updates the live `completed` field
-  /// (and alarm silencing) so the checkbox on the tile stays in sync —
-  /// otherwise the two would visibly disagree. Backdated entries for any
-  /// other date only affect history/streak, never the live checkbox.
+  /// task's current active period, it ALSO updates the live `completed`
+  /// field (and alarm silencing) so the checkbox on the Tasks screen tile
+  /// stays in sync — otherwise the two would visibly disagree. Backdated
+  /// entries for any other date only affect history/streak, never the
+  /// live checkbox.
+  ///
+  /// "Current active period" uses the exact same fallback as
+  /// toggleComplete: task.dueDate if set, otherwise today. Previously this
+  /// only checked task.dueDate directly, so for any task with no due date
+  /// set, marking *today* complete from the calendar would update
+  /// completionLog (correctly) but never touch `completed` — meaning the
+  /// Tasks screen checkbox (which reads `completed`, not completionLog)
+  /// silently fell out of sync with what the calendar showed. Matching
+  /// the fallback here fixes that for both marking and unmarking.
   Future<void> setCompletionForDate(
     Task task,
     DateTime date,
@@ -153,8 +163,8 @@ class TaskService {
     final key = dateKey(date);
     final updatedLog = {...task.completionLog, key: completed};
 
-    final isActivePeriod = task.dueDate != null &&
-        isSameDay(task.dueDate!.toDate(), date);
+    final effectiveActiveDate = task.dueDate?.toDate() ?? DateTime.now();
+    final isActivePeriod = isSameDay(effectiveActiveDate, date);
 
     final update = <String, dynamic>{
       'completionLog': updatedLog,
@@ -198,6 +208,13 @@ class TaskService {
   ///   2. Rolls forward repeating tasks: resets completed to false and
   ///      advances dueDate to the next occurrence, but first makes sure
   ///      yesterday's result is captured in completionLog before it resets.
+  ///
+  /// IMPORTANT: this only finds tasks via a query on `dueDate`, so a
+  /// repeating task with no `dueDate` set is invisible to it and will
+  /// never roll over. TaskFormScreen now guarantees repeating tasks always
+  /// get a dueDate (defaulting to today) at creation/edit time specifically
+  /// so they stay visible to this query — if that ever changes, rollover
+  /// needs a different way to find repeating tasks.
   ///
   /// LIMITATION: only ever checks "yesterday relative to today," once per
   /// calendar day the app is opened — a multi-day gap only evaluates the

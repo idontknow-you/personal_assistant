@@ -34,7 +34,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   DateTime? _dueDate;
   TaskRepeatType _repeatType = TaskRepeatType.none;
   Set<int> _repeatDays = {};
-  Priority _priority = Priority.medium;
+  Priority _priority = Priority.low;
   List<Subtask> _subtasks = [];
 
   bool _reminderEnabled = false;
@@ -58,7 +58,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     _dueDate = t?.dueDate?.toDate();
     _repeatType = t?.repeatType ?? TaskRepeatType.none;
     _repeatDays = {...(t?.repeatDays ?? const {})};
-    _priority = t?.priority ?? Priority.medium;
+    // New tasks (t == null) default to low priority.
+    _priority = t?.priority ?? Priority.low;
     _subtasks = [...(t?.subtasks ?? const [])];
 
     if (t?.linkedAlarmId != null) {
@@ -176,9 +177,20 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
     try {
       final title = _titleController.text.trim();
+      final repeats = _repeatType != TaskRepeatType.none;
+
+      // Repeating tasks MUST have a dueDate — TaskService.runDailyRollover()
+      // finds repeating tasks via a Firestore query on dueDate, so a
+      // repeating task with no dueDate is invisible to it and will never
+      // roll over (never reset to unchecked the next day). Due date is
+      // optional in the UI above, so default it to today here rather than
+      // leaving it null when the user turned on Daily/Weekly but didn't
+      // separately set a date.
+      if (repeats && _dueDate == null) {
+        _dueDate = DateTime.now();
+      }
       final dueTimestamp =
           _dueDate == null ? null : Timestamp.fromDate(_dueDate!);
-      final repeats = _repeatType != TaskRepeatType.none;
 
       String taskId;
       if (_isEditing) {

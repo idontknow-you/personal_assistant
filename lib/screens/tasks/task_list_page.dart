@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../models/tasks/task.dart';
 import '../../services/tasks/task_service.dart';
 import '../../services/alarms/alarm_service.dart';
+import '../../services/habits/habit_service.dart';
 import '../../widgets/tasks/task_tile.dart';
 import '../../widgets/tasks/completion_history_sheet.dart';
 import '../settings/settings_screen.dart';
@@ -23,12 +24,14 @@ class TaskListPage extends StatefulWidget {
 
 class _TaskListPageState extends State<TaskListPage> {
   late final TaskService _taskService;
+  late final HabitService _habitService;
   TaskFilter _filter = TaskFilter.all;
 
   @override
   void initState() {
     super.initState();
     _taskService = TaskService(widget.uid, alarmService: widget.alarmService);
+    _habitService = HabitService(widget.uid);
     _taskService.runDailyRollover();
   }
 
@@ -97,7 +100,10 @@ class _TaskListPageState extends State<TaskListPage> {
   void _openCalendar() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => TaskCalendarScreen(taskService: _taskService),
+        builder: (_) => TaskCalendarScreen(
+          taskService: _taskService,
+          habitService: _habitService,
+        ),
       ),
     );
   }

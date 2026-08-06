@@ -81,7 +81,7 @@ class Task {
     this.repeatType = TaskRepeatType.none,
     this.repeatDays = const {},
     this.linkedAlarmId,
-    this.priority = Priority.medium,
+    this.priority = Priority.low,
     this.subtasks = const [],
     this.completionLog = const {},
   });
@@ -101,10 +101,10 @@ class Task {
       repeatDays: Set<int>.from(data['repeatDays'] as List? ?? []),
       linkedAlarmId: data['linkedAlarmId'] as int?,
       // Defensive: old docs written before this field existed won't have
-      // it, so fall back to medium rather than throwing on an unknown name.
+      // it, so fall back to low rather than throwing on an unknown name.
       priority: Priority.values.firstWhere(
         (p) => p.name == data['priority'],
-        orElse: () => Priority.medium,
+        orElse: () => Priority.low,
       ),
       subtasks: (data['subtasks'] as List<dynamic>? ?? [])
           .map((s) => Subtask.fromMap(Map<String, dynamic>.from(s as Map)))
