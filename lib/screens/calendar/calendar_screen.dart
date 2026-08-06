@@ -16,8 +16,8 @@ import '../../widgets/tasks/day_agenda_tile.dart';
 ///
 /// Day agenda is always Tasks first, then Habits below, per section
 /// headers — never interleaved.
-class TaskCalendarScreen extends StatefulWidget {
-  const TaskCalendarScreen({
+class CalendarScreen extends StatefulWidget {
+  const CalendarScreen({
     super.key,
     required this.taskService,
     required this.habitService,
@@ -27,10 +27,10 @@ class TaskCalendarScreen extends StatefulWidget {
   final HabitService habitService;
 
   @override
-  State<TaskCalendarScreen> createState() => _TaskCalendarScreenState();
+  State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _TaskCalendarScreenState extends State<TaskCalendarScreen> {
+class _CalendarScreenState extends State<CalendarScreen> {
   late DateTime _visibleMonth; // first-of-month, no time component
   late DateTime _selectedDay;
 
@@ -131,9 +131,14 @@ class _TaskCalendarScreenState extends State<TaskCalendarScreen> {
 
   /// Completion status for [task] on [day]: true/false if there's a record,
   /// null if unknown (a future day, or a day never toggled/backdated).
+  ///
+  /// Mirrors TaskService._syncsLiveCompleted: non-repeating tasks have no
+  /// real "days," so once a one-off task is completed, `task.completed`
+  /// applies to every day, not just the day it happened to be recorded on.
   bool? _statusOn(Task task, DateTime day) {
     final key = _key(day);
     if (task.completionLog.containsKey(key)) return task.completionLog[key];
+    if (task.repeatType == TaskRepeatType.none) return task.completed;
     final effectiveActiveDate = task.dueDate?.toDate() ?? DateTime.now();
     if (_sameDay(effectiveActiveDate, day)) return task.completed;
     return null;

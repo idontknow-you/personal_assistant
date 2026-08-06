@@ -8,7 +8,7 @@ import '../../widgets/tasks/completion_history_sheet.dart';
 import '../settings/settings_screen.dart';
 import 'task_form_screen.dart';
 import 'task_stats_screen.dart';
-import 'task_calendar_screen.dart';
+import '../calendar/calendar_screen.dart';
 
 enum TaskFilter { all, today, overdue, completed }
 
@@ -100,7 +100,7 @@ class _TaskListPageState extends State<TaskListPage> {
   void _openCalendar() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => TaskCalendarScreen(
+        builder: (_) => CalendarScreen(
           taskService: _taskService,
           habitService: _habitService,
         ),

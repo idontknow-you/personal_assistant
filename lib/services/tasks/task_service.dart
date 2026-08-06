@@ -161,10 +161,27 @@ class TaskService {
     bool completed,
   ) async {
     final key = dateKey(date);
-    final updatedLog = {...task.completionLog, key: completed};
-
     final effectiveActiveDate = task.dueDate?.toDate() ?? DateTime.now();
     final isActivePeriod = isSameDay(effectiveActiveDate, date);
+
+    final updatedLog = {...task.completionLog};
+    if (!completed && !isActivePeriod) {
+      // Unmarking a BACKDATED day that ISN'T the task's current active
+      // period: delete the entry entirely rather than storing `false`.
+      // The calendar screen treats any key present in completionLog as
+      // "this task is tied to this date" so it can surface backdated
+      // entries that fall outside the task's normal repeat pattern.
+      // Previously unmarking such a day still wrote `false`, which left
+      // that key behind — so the task stayed glued to that date on the
+      // calendar (just shown unchecked) even after you'd explicitly
+      // undone it. Deleting the key makes an unmarked backdated day
+      // disappear from the calendar entirely, unless it's also part of
+      // the task's actual due date/repeat pattern, in which case it'll
+      // still show via the pattern itself, just correctly unchecked.
+      updatedLog.remove(key);
+    } else {
+      updatedLog[key] = completed;
+    }
 
     final update = <String, dynamic>{
       'completionLog': updatedLog,
