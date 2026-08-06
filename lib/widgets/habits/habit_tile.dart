@@ -31,14 +31,17 @@ class HabitTile extends StatelessWidget {
     }
   }
 
+  static const _weekdayLetters = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
   @override
   Widget build(BuildContext context) {
     final today = startOfDay(DateTime.now());
-    // Last 7 days, oldest first, today last.
-    final days = List.generate(
-      7,
-      (i) => today.subtract(Duration(days: 6 - i)),
-    );
+    // Fixed Monday-Sunday week (today.weekday: 1=Mon..7=Sun), so the strip
+    // resets visually every week instead of scrolling as a rolling 7-day
+    // window. Streak math underneath is unaffected — it's still continuous
+    // day-to-day regardless of week boundaries.
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final days = List.generate(7, (i) => monday.add(Duration(days: i)));
 
     return Card(
       child: InkWell(
@@ -81,8 +84,27 @@ class HabitTile extends StatelessWidget {
                   final isToday = isSameDay(day, today);
                   final expected = habit.isExpectedOn(day.weekday);
                   final status = habit.statusOn(dateKey(day));
+                  final letter = _weekdayLetters[day.weekday - 1];
+                  final showIcon = status == HabitDayStatus.done ||
+                      status == HabitDayStatus.missed;
+
+                  // Letter color needs contrast against whatever _dotColor
+                  // returns; done/missed dots are solid saturated colors so
+                  // white works, everything else is a light tint so a
+                  // muted dark tone reads better.
+                  final letterColor = (status == HabitDayStatus.skipped)
+                      ? Colors.white.withOpacity(0.85)
+                      : Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.color
+                          ?.withOpacity(0.6);
+
                   return GestureDetector(
-                    onTap: expected ? () => onDotTap(day) : null,
+                    // Only today's dot is editable. Past/future dots are
+                    // read-only history/placeholders.
+                    onTap:
+                        (isToday && expected) ? () => onDotTap(day) : null,
                     child: Container(
                       width: 28,
                       height: 28,
@@ -93,12 +115,24 @@ class HabitTile extends StatelessWidget {
                             ? Border.all(color: AppColors.primary, width: 2)
                             : null,
                       ),
-                      child: status == HabitDayStatus.done
-                          ? const Icon(Icons.check, size: 14, color: Colors.white)
-                          : status == HabitDayStatus.missed
-                              ? const Icon(Icons.close,
-                                  size: 14, color: Colors.white)
-                              : null,
+                      child: Center(
+                        child: showIcon
+                            ? Icon(
+                                status == HabitDayStatus.done
+                                    ? Icons.check
+                                    : Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              )
+                            : Text(
+                                letter,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: letterColor,
+                                ),
+                              ),
+                      ),
                     ),
                   );
                 }).toList(),
