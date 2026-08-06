@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'tasks/task_list_page.dart';
 import 'alarms/alarm_list_screen.dart';
 import 'habits/habit_list_page.dart';
-import 'settings/settings_screen.dart';
 import '../services/alarms/alarm_service.dart';
 import '../services/habits/habit_service.dart';
 
@@ -28,11 +27,14 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Settings lives only in TaskListPage's AppBar now, not as its own
+    // bottom nav destination — see HomeShell history for why (three
+    // frequently-switched sections deserve the nav bar; Settings is
+    // occasional and reachable fine from an AppBar icon instead).
     final pages = [
       TaskListPage(uid: widget.uid, alarmService: _alarmService),
       AlarmListScreen(alarmService: _alarmService),
       HabitListPage(habitService: _habitService),
-      const SettingsScreen(),
     ];
 
     return Scaffold(
@@ -44,7 +46,6 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: Icon(Icons.checklist), label: 'Tasks'),
           NavigationDestination(icon: Icon(Icons.alarm), label: 'Alarms'),
           NavigationDestination(icon: Icon(Icons.local_fire_department), label: 'Habits'),
-          NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
         ],
       ),
     );
