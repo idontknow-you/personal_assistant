@@ -63,6 +63,11 @@ class Task {
 
   final List<Subtask> subtasks;
 
+  /// Free-text notes about the task. Optional — defaults to empty string,
+  /// not null, so UI code can bind it straight to a TextEditingController
+  /// without null-checking everywhere.
+  final String notes;
+
   /// Per-day completion history, keyed by "yyyy-MM-dd" (see date_utils.dart).
   /// This is the source of truth for streaks/heatmap/stats — [completed]
   /// only reflects the *current* period and gets reset by rollover, but
@@ -83,6 +88,7 @@ class Task {
     this.linkedAlarmId,
     this.priority = Priority.low,
     this.subtasks = const [],
+    this.notes = '',
     this.completionLog = const {},
   });
 
@@ -109,6 +115,8 @@ class Task {
       subtasks: (data['subtasks'] as List<dynamic>? ?? [])
           .map((s) => Subtask.fromMap(Map<String, dynamic>.from(s as Map)))
           .toList(),
+      // Defensive default for old docs written before this field existed.
+      notes: data['notes'] as String? ?? '',
       completionLog: Map<String, bool>.from(
         (data['completionLog'] as Map<dynamic, dynamic>? ?? {}),
       ),
@@ -127,6 +135,7 @@ class Task {
       'linkedAlarmId': linkedAlarmId,
       'priority': priority.name,
       'subtasks': subtasks.map((s) => s.toMap()).toList(),
+      'notes': notes,
       'completionLog': completionLog,
     };
   }
@@ -134,6 +143,8 @@ class Task {
   /// Note on nullable-field clearing: [dueDate] and [linkedAlarmId] can't be
   /// cleared via `dueDate: null` / `linkedAlarmId: null` — same reasoning as
   /// AlarmModel.copyWith. Use the `clear*` flags to actually null them out.
+  /// [notes] doesn't need a clear flag since it's a non-nullable String —
+  /// pass `notes: ''` to clear it.
   Task copyWith({
     String? title,
     bool? completed,
@@ -145,6 +156,7 @@ class Task {
     bool clearLinkedAlarmId = false,
     Priority? priority,
     List<Subtask>? subtasks,
+    String? notes,
     Map<String, bool>? completionLog,
   }) {
     assert(
@@ -169,6 +181,7 @@ class Task {
           clearLinkedAlarmId ? null : (linkedAlarmId ?? this.linkedAlarmId),
       priority: priority ?? this.priority,
       subtasks: subtasks ?? this.subtasks,
+      notes: notes ?? this.notes,
       completionLog: completionLog ?? this.completionLog,
     );
   }

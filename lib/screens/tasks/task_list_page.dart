@@ -329,6 +329,9 @@ class _TaskListPageState extends State<TaskListPage> {
                 }
 
                 return ListView.builder(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).padding.bottom + 96,
+                  ),
                   itemCount: tasks.length,
                   itemBuilder: (context, index) {
                     final task = tasks[index];

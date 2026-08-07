@@ -49,6 +49,7 @@ class TaskService {
     Set<int> repeatDays = const {},
     Priority priority = Priority.low,
     List<Subtask> subtasks = const [],
+    String notes = '',
   }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return '';
@@ -63,6 +64,7 @@ class TaskService {
       'linkedAlarmId': null,
       'priority': priority.name,
       'subtasks': subtasks.map((s) => s.toMap()).toList(),
+      'notes': notes.trim(),
       'completionLog': <String, bool>{},
     });
     return doc.id;
@@ -147,22 +149,34 @@ class TaskService {
   /// entries for any other date only affect history/streak, never the
   /// live checkbox.
   ///
-  /// "Current active period" uses the exact same fallback as
-  /// toggleComplete: task.dueDate if set, otherwise today. Previously this
-  /// only checked task.dueDate directly, so for any task with no due date
-  /// set, marking *today* complete from the calendar would update
-  /// completionLog (correctly) but never touch `completed` — meaning the
-  /// Tasks screen checkbox (which reads `completed`, not completionLog)
-  /// silently fell out of sync with what the calendar showed. Matching
-  /// the fallback here fixes that for both marking and unmarking.
+  /// "Current active period" — for a task with a dueDate, it's simply
+  /// whether [date] matches that dueDate. For a task with NO dueDate: if
+  /// it doesn't repeat, it isn't scheduled to any particular day at all,
+  /// so there's no "active period" to compare against — completing it for
+  /// ANY date means completing the task itself, full stop. This used to
+  /// fall back to "today", which meant checking such a task off for
+  /// *yesterday* only wrote into completionLog and left `completed`
+  /// untouched — so the Tasks screen checkbox stayed unchecked, making the
+  /// task look like it still needed to be done today even though you'd
+  /// just marked it done. A dueDate-less task that IS repeating is a
+  /// defensive edge case (shouldn't normally happen — TaskFormScreen
+  /// always assigns repeating tasks a dueDate) and keeps the old "today"
+  /// fallback.
   Future<void> setCompletionForDate(
     Task task,
     DateTime date,
     bool completed,
   ) async {
     final key = dateKey(date);
-    final effectiveActiveDate = task.dueDate?.toDate() ?? DateTime.now();
-    final isActivePeriod = isSameDay(effectiveActiveDate, date);
+
+    final bool isActivePeriod;
+    if (task.dueDate != null) {
+      isActivePeriod = isSameDay(task.dueDate!.toDate(), date);
+    } else if (task.repeatType == TaskRepeatType.none) {
+      isActivePeriod = true;
+    } else {
+      isActivePeriod = isSameDay(DateTime.now(), date);
+    }
 
     final updatedLog = {...task.completionLog};
     if (!completed && !isActivePeriod) {

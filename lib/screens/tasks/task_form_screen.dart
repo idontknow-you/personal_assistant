@@ -31,6 +31,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
   late TextEditingController _titleController;
   late TextEditingController _subtaskInputController;
+  late TextEditingController _notesController;
   DateTime? _dueDate;
   TaskRepeatType _repeatType = TaskRepeatType.none;
   Set<int> _repeatDays = {};
@@ -55,6 +56,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     final t = widget.existingTask;
     _titleController = TextEditingController(text: t?.title ?? '');
     _subtaskInputController = TextEditingController();
+    _notesController = TextEditingController(text: t?.notes ?? '');
     _dueDate = t?.dueDate?.toDate();
     _repeatType = t?.repeatType ?? TaskRepeatType.none;
     _repeatDays = {...(t?.repeatDays ?? const {})};
@@ -82,6 +84,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   void dispose() {
     _titleController.dispose();
     _subtaskInputController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
@@ -177,6 +180,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
     try {
       final title = _titleController.text.trim();
+      final notes = _notesController.text.trim();
       final repeats = _repeatType != TaskRepeatType.none;
 
       // Repeating tasks MUST have a dueDate — TaskService.runDailyRollover()
@@ -205,6 +209,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           repeatDays: _repeatDays,
           priority: _priority,
           subtasks: _subtasks,
+          notes: notes,
         );
       }
 
@@ -265,6 +270,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           clearLinkedAlarmId: linkedAlarmId == null,
           priority: _priority,
           subtasks: _subtasks,
+          notes: notes,
         );
         await widget.taskService.updateTask(updated);
       } else if (linkedAlarmId != null) {
@@ -428,6 +434,21 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                       onPressed: _addSubtask,
                     ),
                   ],
+                ),
+                const Divider(height: 32),
+                Text('Notes', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _notesController,
+                  minLines: 3,
+                  maxLines: 8,
+                  keyboardType: TextInputType.multiline,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    hintText: 'Anything else about this task...',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
                 ),
                 const Divider(height: 32),
                 SwitchListTile(
