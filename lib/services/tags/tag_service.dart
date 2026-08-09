@@ -61,6 +61,30 @@ class TagService {
     return doc.id;
   }
 
+  /// Renames an existing tag. Deliberately does NOT re-derive colorHex
+  /// from the new name — color is assigned once at creation and then
+  /// treated as the tag's stable identity color; recomputing it on every
+  /// rename would make a tag's color jump around for no reason the user
+  /// asked for. Same duplicate-name guard as addTag: if [newName] already
+  /// matches another existing tag (case-insensitive), this is a no-op
+  /// rather than creating a naming collision. [existingTags] is passed in
+  /// the same way as addTag, for the same reason.
+  Future<void> updateTagName(
+    String tagId,
+    String newName,
+    List<Tag> existingTags,
+  ) async {
+    final trimmed = newName.trim();
+    if (trimmed.isEmpty) return;
+
+    final collision = existingTags.any(
+      (t) => t.id != tagId && t.name.toLowerCase() == trimmed.toLowerCase(),
+    );
+    if (collision) return;
+
+    await _tagsRef.doc(tagId).update({'name': trimmed});
+  }
+
   /// Deletes the tag and unassigns it (Task.tagId -> null) from every
   /// task currently using it. Deliberately never touches the tasks
   /// themselves beyond that one field — cleaning up your tag list should
@@ -74,5 +98,4 @@ class TagService {
     batch.delete(_tagsRef.doc(tagId));
     await batch.commit();
   }
-  
 }

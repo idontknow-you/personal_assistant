@@ -144,7 +144,7 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const SettingsScreen(),
+        builder: (_) => SettingsScreen(tagService: _tagService),
       ),
     );
   }

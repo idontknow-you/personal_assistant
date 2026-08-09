@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 
 import '../../main.dart';
 import '../../services/auth_service.dart';
+import '../../services/tags/tag_service.dart';
 import '../../theme/app_theme.dart';
+import '../tags/tag_management_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, required this.tagService});
+
+  final TagService tagService;
 
   @override
   Widget build(BuildContext context) {
@@ -157,6 +161,17 @@ class SettingsScreen extends StatelessWidget {
                   leading: Icon(Icons.info_outline),
                   title: Text('Personal OS'),
                   subtitle: Text('v1.0.0'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.label_outline),
+                  title: const Text('Manage tags'),
+                  subtitle: const Text('Rename or delete your tags'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TagManagementScreen(tagService: tagService),
+                    ),
+                  ),
                 ),
                 const Divider(height: 1),
                 ListTile(
