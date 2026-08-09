@@ -68,6 +68,13 @@ class Task {
   /// without null-checking everywhere.
   final String notes;
 
+  /// Id of the single Tag (see models/tags/tag.dart) this task is
+  /// assigned to, or null for no tag. A task can only ever have one tag —
+  /// this is NOT a list. Resolving the id to an actual Tag (name/color)
+  /// is the caller's job, via TagService.watchTags(), since Task itself
+  /// has no way to look tags up.
+  final String? tagId;
+
   /// Per-day completion history, keyed by "yyyy-MM-dd" (see date_utils.dart).
   /// This is the source of truth for streaks/heatmap/stats — [completed]
   /// only reflects the *current* period and gets reset by rollover, but
@@ -89,6 +96,7 @@ class Task {
     this.priority = Priority.low,
     this.subtasks = const [],
     this.notes = '',
+    this.tagId,
     this.completionLog = const {},
   });
 
@@ -117,6 +125,8 @@ class Task {
           .toList(),
       // Defensive default for old docs written before this field existed.
       notes: data['notes'] as String? ?? '',
+      // Defensive default for old docs written before tags existed.
+      tagId: data['tagId'] as String?,
       completionLog: Map<String, bool>.from(
         (data['completionLog'] as Map<dynamic, dynamic>? ?? {}),
       ),
@@ -136,15 +146,16 @@ class Task {
       'priority': priority.name,
       'subtasks': subtasks.map((s) => s.toMap()).toList(),
       'notes': notes,
+      'tagId': tagId,
       'completionLog': completionLog,
     };
   }
 
-  /// Note on nullable-field clearing: [dueDate] and [linkedAlarmId] can't be
-  /// cleared via `dueDate: null` / `linkedAlarmId: null` — same reasoning as
-  /// AlarmModel.copyWith. Use the `clear*` flags to actually null them out.
-  /// [notes] doesn't need a clear flag since it's a non-nullable String —
-  /// pass `notes: ''` to clear it.
+  /// Note on nullable-field clearing: [dueDate], [linkedAlarmId], and
+  /// [tagId] can't be cleared via `dueDate: null` / etc — same reasoning
+  /// as AlarmModel.copyWith. Use the `clear*` flags to actually null them
+  /// out. [notes] doesn't need a clear flag since it's a non-nullable
+  /// String — pass `notes: ''` to clear it.
   Task copyWith({
     String? title,
     bool? completed,
@@ -157,6 +168,8 @@ class Task {
     Priority? priority,
     List<Subtask>? subtasks,
     String? notes,
+    String? tagId,
+    bool clearTagId = false,
     Map<String, bool>? completionLog,
   }) {
     assert(
@@ -166,6 +179,10 @@ class Task {
     assert(
       !(linkedAlarmId != null && clearLinkedAlarmId),
       'Pass either linkedAlarmId or clearLinkedAlarmId: true, not both',
+    );
+    assert(
+      !(tagId != null && clearTagId),
+      'Pass either tagId or clearTagId: true, not both',
     );
 
     return Task(
@@ -182,6 +199,7 @@ class Task {
       priority: priority ?? this.priority,
       subtasks: subtasks ?? this.subtasks,
       notes: notes ?? this.notes,
+      tagId: clearTagId ? null : (tagId ?? this.tagId),
       completionLog: completionLog ?? this.completionLog,
     );
   }

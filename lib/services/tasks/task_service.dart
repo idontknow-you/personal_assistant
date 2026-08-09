@@ -69,6 +69,7 @@ class TaskService {
     Priority priority = Priority.low,
     List<Subtask> subtasks = const [],
     String notes = '',
+    String? tagId,
   }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return '';
@@ -85,6 +86,7 @@ class TaskService {
       'priority': priority.name,
       'subtasks': subtasks.map((s) => s.toMap()).toList(),
       'notes': notes.trim(),
+      'tagId': tagId,
       'completionLog': <String, bool>{},
     });
     return doc.id;

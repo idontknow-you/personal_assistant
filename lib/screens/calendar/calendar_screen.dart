@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../models/tasks/task.dart';
 import '../../models/habits/habit.dart';
+import '../../models/tags/tag.dart';
 import '../../services/tasks/task_service.dart';
 import '../../services/habits/habit_service.dart';
+import '../../services/tags/tag_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/tasks/day_agenda_tile.dart';
 
@@ -21,10 +23,12 @@ class CalendarScreen extends StatefulWidget {
     super.key,
     required this.taskService,
     required this.habitService,
+    required this.tagService,
   });
 
   final TaskService taskService;
   final HabitService habitService;
+  final TagService tagService;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -216,7 +220,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       case HabitDayStatus.missed:
         return AppColors.error;
       case null:
-        return AppColors.skip.withOpacity(0.3);
+        return AppColors.skip.withValues(alpha: 0.3);
     }
   }
 
@@ -243,12 +247,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ),
         ],
       ),
-      body: StreamBuilder<List<Task>>(
-        stream: widget.taskService.watchTasks(),
-        builder: (context, taskSnapshot) {
-          return StreamBuilder<List<Habit>>(
-            stream: widget.habitService.watchHabits(),
-            builder: (context, habitSnapshot) {
+      body: StreamBuilder<List<Tag>>(
+        stream: widget.tagService.watchTags(),
+        builder: (context, tagSnapshot) {
+          final tags = tagSnapshot.data ?? [];
+          final tagsById = {for (final t in tags) t.id: t};
+
+          return StreamBuilder<List<Task>>(
+            stream: widget.taskService.watchTasks(),
+            builder: (context, taskSnapshot) {
+              return StreamBuilder<List<Habit>>(
+                stream: widget.habitService.watchHabits(),
+                builder: (context, habitSnapshot) {
               if (taskSnapshot.connectionState == ConnectionState.waiting ||
                   habitSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -292,7 +302,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 return a.name.compareTo(b.name);
               });
 
-              final totalCount = selectedTasks.length + selectedHabits.length;
+              final totalCount =
+                  selectedTasks.length + selectedHabits.length;
 
               return Column(
                 children: [
@@ -363,6 +374,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                     task: task,
                                     day: _selectedDay,
                                     completed: done,
+                                    tag: task.tagId == null
+                                        ? null
+                                        : tagsById[task.tagId],
                                     onToggle: isFuture
                                         ? null
                                         : () => widget.taskService.setCompletionForDate(
@@ -398,6 +412,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ),
                   ),
                 ],
+              );
+                },
               );
             },
           );

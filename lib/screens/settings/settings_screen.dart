@@ -81,6 +81,74 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
+          _SectionLabel('Theme'),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: ValueListenableBuilder<ThemePalette>(
+                valueListenable: paletteNotifier,
+                builder: (context, currentPalette, _) {
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: AppThemePresets.all.map((palette) {
+                      final selected = palette.key == currentPalette.key;
+                      return GestureDetector(
+                        onTap: () => setThemePreset(palette.key),
+                        child: Container(
+                          width: 140,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: selected
+                                  ? palette.primary
+                                  : Theme.of(context).dividerColor,
+                              width: selected ? 2 : 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: palette.preview
+                                    .map((c) => Expanded(
+                                          child: Container(
+                                            height: 28,
+                                            color: c,
+                                          ),
+                                        ))
+                                    .toList(),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      palette.label,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                  if (selected)
+                                    Icon(Icons.check_circle,
+                                        size: 16, color: palette.primary),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
           _SectionLabel('About & Data'),
           Card(
             child: Column(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/tasks/task.dart';
+import '../../models/tags/tag.dart';
 import '../../theme/app_theme.dart';
 
 class TaskTile extends StatelessWidget {
@@ -11,6 +12,7 @@ class TaskTile extends StatelessWidget {
     this.onEdit,
     this.onSubtaskToggle,
     this.onShowHistory,
+    this.tag,
   });
 
   final Task task;
@@ -22,6 +24,12 @@ class TaskTile extends StatelessWidget {
   /// Opens the completion-history sheet (backdating). Parent owns
   /// TaskService, so this stays a plain callback like the others.
   final VoidCallback? onShowHistory;
+
+  /// The resolved Tag for task.tagId, if any — TaskTile has no way to
+  /// look this up itself (Task only stores the id), so the caller
+  /// resolves it from TagService.watchTags() and passes it in. Null if
+  /// the task has no tag, or its tag was deleted and not yet unassigned.
+  final Tag? tag;
 
   bool get _isOverdue {
     if (task.completed || task.dueDate == null) return false;
@@ -97,8 +105,9 @@ class TaskTile extends StatelessWidget {
                   color: task.completed ? Colors.grey : null,
                 ),
               ),
-              subtitle: (dueLabel != null || repeatLabel != null)
-                  ? Row(
+              subtitle: (dueLabel != null || repeatLabel != null || tag != null)
+                  ? Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         if (dueLabel != null)
                           Text(
@@ -133,6 +142,11 @@ class TaskTile extends StatelessWidget {
                               ),
                             ],
                           ),
+                        if (tag != null) ...[
+                          if (dueLabel != null || repeatLabel != null)
+                            const SizedBox(width: 8),
+                          _TagChip(tag: tag!),
+                        ],
                       ],
                     )
                   : null,
@@ -196,6 +210,35 @@ class TaskTile extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Small pill showing a tag's name in its own color. Kept private to this
+/// file since DayAgendaTile defines an identical one independently rather
+/// than sharing — both are trivial enough that a shared widgets/tags/
+/// file felt like more indirection than it's worth for a single Container.
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.tag});
+
+  final Tag tag;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: tag.color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        tag.name,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: tag.color,
         ),
       ),
     );

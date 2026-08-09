@@ -1,44 +1,44 @@
 import 'package:flutter/material.dart';
 
-/// Single source of truth for all colors in Personal OS.
-/// Change a value here, it updates everywhere the app uses AppColors.
+/// Semantic colors — same across every theme palette.
 class AppColors {
   AppColors._();
 
-  // Brand / accent
-  static const Color primary = Color(0xFF6C63FF);
-  static const Color primaryDark = Color(0xFF4E46D1);
-  static const Color accent = Color(0xFF00C2A8);
-
-  // Backgrounds
-  static const Color background = Color(0xFFF7F7FB);
-  static const Color surface = Colors.white;
-  static const Color surfaceDark = Color(0xFF1C1C24);
-  static const Color backgroundDark = Color(0xFF121216);
-
-  // Text
-  static const Color textPrimary = Color(0xFF1A1A1E);
-  static const Color textSecondary = Color(0xFF6B6B76);
-  static const Color textOnPrimary = Colors.white;
-
-  // Status / semantic
   static const Color success = Color(0xFF34C759);
   static const Color warning = Color(0xFFFFB020);
   static const Color error = Color(0xFFFF3B30);
-  static const Color skip = Color(0xFF8E8E93); // habit skip vs miss (later)
+  static const Color skip = Color(0xFF8E8E93);
 
-  // Priority (task tile left-border + form selector)
   static const Color priorityLow = Color(0xFF8E8E93);
   static const Color priorityMedium = Color(0xFFFFB020);
   static const Color priorityHigh = Color(0xFFFF3B30);
 
-  // Streak / heatmap intensity scale (light -> dark, 5 steps) — for later
   static const List<Color> heatmapScale = [
     Color(0xFFEBEDF0),
     Color(0xFFC6E7D4),
     Color(0xFF8FD4A8),
     Color(0xFF4CBF7A),
     Color(0xFF1E9E52),
+  ];
+
+  /// Colors for auto-assigned tag chips (see TagService._colorForName).
+  /// Deliberately NOT tied to any one ThemePalette — tags need to stay
+  /// legible and consistent regardless of which of the four presets is
+  /// active, same reasoning as priorityLow/Medium/High being fixed colors
+  /// rather than theme-derived. Pulled from hues already used across the
+  /// existing presets (Aare River teal, Lobster Pink, Bonfire orange,
+  /// Plaudit navy, Wine Plum, Purple Empire, plus one heatmap green and
+  /// Quing Yellow for warmth) so new tag colors still feel like they
+  /// belong to the app rather than a bolted-on rainbow.
+  static const List<Color> tagPalette = [
+    Color(0xFF0DBE9D), // Aare River teal
+    Color(0xFFD44D5C), // Lobster Pink
+    Color(0xFFF78358), // Bonfire orange
+    Color(0xFF3A516A), // Plaudit navy
+    Color(0xFF773344), // Wine Plum
+    Color(0xFF5C4B57), // Purple Empire
+    Color(0xFF1E9E52), // heatmap green
+    Color(0xFFC9971F), // deepened Quing Yellow (darkened for legibility as text/chip color)
   ];
 
   static Color priorityColor(String priorityName) {
@@ -53,71 +53,171 @@ class AppColors {
   }
 }
 
+/// Per-theme brand/background/text colors. Add a new palette here to reskin the app.
+class ThemePalette {
+  final String key;
+  final String label;
+  final Color primary;
+  final Color accent;
+  final Color background;
+  final Color surface;
+  final Color surfaceDark;
+  final Color backgroundDark;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color textOnPrimary;
+  final List<Color> preview; // shown as swatch strip in Settings
+
+  const ThemePalette({
+    required this.key,
+    required this.label,
+    required this.primary,
+    required this.accent,
+    required this.background,
+    required this.surface,
+    required this.surfaceDark,
+    required this.backgroundDark,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.textOnPrimary,
+    required this.preview,
+  });
+}
+
+class AppThemePresets {
+  AppThemePresets._();
+
+  static const aurora = ThemePalette(
+    key: 'aurora',
+    label: 'Aurora',
+    primary: Color(0xFF3A516A), // Plaudit
+    accent: Color(0xFF0DBE9D), // Aare River
+    background: Color(0xFFEAF2F1), // soft teal-gray tint — was a saturated #28BEBE that clashed with the muted navy/teal palette
+    surface: Colors.white,
+    surfaceDark: Color(0xFF18455D), // Ethereal Dance
+    backgroundDark: Color(0xFF0C141C), // Midnight Edition
+    textPrimary: Color(0xFF162F46), // NATO Blue
+    textSecondary: Color(0xFF617180), // Hidden Harbour
+    textOnPrimary: Colors.white,
+    preview: [Color(0xFF18455D), Color(0xFF3A516A), Color(0xFF0DBE9D), Color(0xFF0C141C)],
+  );
+
+  static const midnightViolet = ThemePalette(
+    key: 'midnightViolet',
+    label: 'Midnight Violet',
+    primary: Color(0xFF773344), // Wine Plum
+    accent: Color(0xFFD44D5C), // Lobster Pink
+    background: Color(0xFFF5E9E2), // Linen
+    surface: Colors.white,
+    surfaceDark: Color(0xFF2A1030),
+    backgroundDark: Color(0xFF160029), // Midnight Violet
+    textPrimary: Color(0xFF2A1030),
+    textSecondary: Color(0xFF9B7A88),
+    textOnPrimary: Colors.white,
+    preview: [Color(0xFF160029), Color(0xFF773344), Color(0xFFD44D5C), Color(0xFFE3B5A4)],
+  );
+
+  static const purpleEmpire = ThemePalette(
+    key: 'purpleEmpire',
+    label: 'Purple Empire',
+    primary: Color(0xFF5C4B57), // Purple Empire
+    accent: Color(0xFFC8B4C4), // Pink Bravado
+    background: Color(0xFFEBDFE7), // Ostrich Tail
+    surface: Colors.white,
+    surfaceDark: Color(0xFF352C39),
+    backgroundDark: Color(0xFF261F28), // To Hell and Black
+    textPrimary: Color(0xFF261F28),
+    textSecondary: Color(0xFF978090), // Plum Swirl
+    textOnPrimary: Colors.white,
+    preview: [Color(0xFF261F28), Color(0xFF5C4B57), Color(0xFF978090), Color(0xFFC8B4C4)],
+  );
+
+  static const warmAmber = ThemePalette(
+    key: 'warmAmber',
+    label: 'Warm Amber',
+    primary: Color(0xFFF78358), // Bonfire
+    accent: Color(0xFFFECC64), // Quing Yellow
+    background: Color(0xFFFFF6E8), // Apricot Ice
+    surface: Colors.white,
+    surfaceDark: Color(0xFF482420), // Tobi Brown
+    backgroundDark: Color(0xFF2A1512),
+    textPrimary: Color(0xFF482420),
+    textSecondary: Color(0xFF8A5A4A),
+    textOnPrimary: Colors.white,
+    preview: [Color(0xFF482420), Color(0xFFB24D37), Color(0xFFF78358), Color(0xFFFECC64)],
+  );
+
+  static const all = [aurora, midnightViolet, purpleEmpire, warmAmber];
+
+  static ThemePalette byKey(String key) =>
+      all.firstWhere((p) => p.key == key, orElse: () => aurora);
+}
+
 class AppTheme {
   AppTheme._();
 
-  static ThemeData light = ThemeData(
-    useMaterial3: true,
-    brightness: Brightness.light,
-    scaffoldBackgroundColor: AppColors.background,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      brightness: Brightness.light,
-      primary: AppColors.primary,
-      surface: AppColors.surface,
-      error: AppColors.error,
-    ),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.surface,
-      foregroundColor: AppColors.textPrimary,
-      elevation: 0,
-    ),
-    textTheme: const TextTheme(
-      bodyLarge: TextStyle(color: AppColors.textPrimary),
-      bodyMedium: TextStyle(color: AppColors.textPrimary),
-      bodySmall: TextStyle(color: AppColors.textSecondary),
-    ),
-    cardTheme: CardThemeData(
-      color: AppColors.surface,
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.textOnPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    ),
-  );
+  static ThemeData light(ThemePalette p) => ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: p.background,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: p.primary,
+          brightness: Brightness.light,
+          primary: p.primary,
+          surface: p.surface,
+          error: AppColors.error,
+        ),
+        appBarTheme: AppBarTheme(
+          backgroundColor: p.surface,
+          foregroundColor: p.textPrimary,
+          elevation: 0,
+        ),
+        textTheme: TextTheme(
+          bodyLarge: TextStyle(color: p.textPrimary),
+          bodyMedium: TextStyle(color: p.textPrimary),
+          bodySmall: TextStyle(color: p.textSecondary),
+        ),
+        cardTheme: CardThemeData(
+          color: p.surface,
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: p.primary,
+            foregroundColor: p.textOnPrimary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      );
 
-  static ThemeData dark = ThemeData(
-    useMaterial3: true,
-    brightness: Brightness.dark,
-    scaffoldBackgroundColor: AppColors.backgroundDark,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: AppColors.primary,
-      brightness: Brightness.dark,
-      primary: AppColors.primary,
-      surface: AppColors.surfaceDark,
-      error: AppColors.error,
-    ),
-    appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.surfaceDark,
-      foregroundColor: Colors.white,
-      elevation: 0,
-    ),
-    cardTheme: CardThemeData(
-      color: AppColors.surfaceDark,
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    ),
-    elevatedButtonTheme: ElevatedButtonThemeData(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.textOnPrimary,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    ),
-  );
+  static ThemeData dark(ThemePalette p) => ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: p.backgroundDark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: p.primary,
+          brightness: Brightness.dark,
+          primary: p.primary,
+          surface: p.surfaceDark,
+          error: AppColors.error,
+        ),
+        appBarTheme: AppBarTheme(
+          backgroundColor: p.surfaceDark,
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        cardTheme: CardThemeData(
+          color: p.surfaceDark,
+          elevation: 1,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: p.primary,
+            foregroundColor: p.textOnPrimary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      );
 }

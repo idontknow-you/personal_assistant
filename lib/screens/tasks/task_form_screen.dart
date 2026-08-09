@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/tasks/task.dart';
+import '../../models/tags/tag.dart';
 import '../../models/alarms/alarm.dart' as alarm_model;
 import '../../services/tasks/task_service.dart';
 import '../../services/alarms/alarm_service.dart';
+import '../../services/tags/tag_service.dart';
 import '../../theme/app_theme.dart';
 
 class TaskFormScreen extends StatefulWidget {
@@ -11,11 +13,13 @@ class TaskFormScreen extends StatefulWidget {
     super.key,
     required this.taskService,
     required this.alarmService,
+    required this.tagService,
     this.existingTask,
   });
 
   final TaskService taskService;
   final AlarmService alarmService;
+  final TagService tagService;
   /// Null = creating a new task. Non-null = editing this one.
   final Task? existingTask;
 
@@ -32,11 +36,16 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   late TextEditingController _titleController;
   late TextEditingController _subtaskInputController;
   late TextEditingController _notesController;
+  late TextEditingController _newTagController;
   DateTime? _dueDate;
   TaskRepeatType _repeatType = TaskRepeatType.none;
   Set<int> _repeatDays = {};
   Priority _priority = Priority.low;
   List<Subtask> _subtasks = [];
+  String? _tagId;
+
+  /// True while the inline "+ new tag" text field is showing.
+  bool _addingTag = false;
 
   bool _reminderEnabled = false;
   TimeOfDay _reminderTime = const TimeOfDay(hour: 9, minute: 0);
@@ -57,12 +66,14 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     _titleController = TextEditingController(text: t?.title ?? '');
     _subtaskInputController = TextEditingController();
     _notesController = TextEditingController(text: t?.notes ?? '');
+    _newTagController = TextEditingController();
     _dueDate = t?.dueDate?.toDate();
     _repeatType = t?.repeatType ?? TaskRepeatType.none;
     _repeatDays = {...(t?.repeatDays ?? const {})};
     // New tasks (t == null) default to low priority.
     _priority = t?.priority ?? Priority.low;
     _subtasks = [...(t?.subtasks ?? const [])];
+    _tagId = t?.tagId;
 
     if (t?.linkedAlarmId != null) {
       _loadingAlarm = true;
@@ -85,6 +96,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     _titleController.dispose();
     _subtaskInputController.dispose();
     _notesController.dispose();
+    _newTagController.dispose();
     super.dispose();
   }
 
@@ -149,6 +161,28 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     });
   }
 
+  void _selectTag(String? tagId) {
+    // Tapping the already-selected tag deselects it — a single tap is the
+    // only way to both pick and clear a tag, since there's no separate
+    // "None" affordance once a tag is chosen.
+    setState(() => _tagId = _tagId == tagId ? null : tagId);
+  }
+
+  Future<void> _submitNewTag(List<Tag> existingTags) async {
+    final name = _newTagController.text.trim();
+    if (name.isEmpty) {
+      setState(() => _addingTag = false);
+      return;
+    }
+    final newTagId = await widget.tagService.addTag(name, existingTags);
+    if (!mounted) return;
+    setState(() {
+      if (newTagId.isNotEmpty) _tagId = newTagId;
+      _addingTag = false;
+      _newTagController.clear();
+    });
+  }
+
   bool get _canSave {
     if (_titleController.text.trim().isEmpty) return false;
     if (_repeatType == TaskRepeatType.weekly && _repeatDays.isEmpty) {
@@ -189,7 +223,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       // roll over (never reset to unchecked the next day). Due date is
       // optional in the UI above, so default it to today here rather than
       // leaving it null when the user turned on Daily/Weekly but didn't
-      // separately set a date.
+      // separately set a date. TaskService.addTask/updateTask also enforce
+      // this independently now, so this is belt-and-suspenders.
       if (repeats && _dueDate == null) {
         _dueDate = DateTime.now();
       }
@@ -210,6 +245,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           priority: _priority,
           subtasks: _subtasks,
           notes: notes,
+          tagId: _tagId,
         );
       }
 
@@ -271,6 +307,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
           priority: _priority,
           subtasks: _subtasks,
           notes: notes,
+          tagId: _tagId,
+          clearTagId: _tagId == null,
         );
         await widget.taskService.updateTask(updated);
       } else if (linkedAlarmId != null) {
@@ -289,6 +327,63 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
         );
       }
     }
+  }
+
+  Widget _buildTagSection() {
+    return StreamBuilder<List<Tag>>(
+      stream: widget.tagService.watchTags(),
+      builder: (context, snapshot) {
+        final tags = snapshot.data ?? [];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Tag', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ...tags.map((tag) {
+                  final selected = _tagId == tag.id;
+                  return ChoiceChip(
+                    label: Text(tag.name),
+                    selected: selected,
+                    selectedColor: tag.color.withValues(alpha: 0.25),
+                    labelStyle: TextStyle(
+                      color: selected ? tag.color : null,
+                      fontWeight: selected ? FontWeight.w600 : null,
+                    ),
+                    onSelected: (_) => _selectTag(tag.id),
+                  );
+                }),
+                if (_addingTag)
+                  SizedBox(
+                    width: 140,
+                    child: TextField(
+                      controller: _newTagController,
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        hintText: 'Tag name',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      onSubmitted: (_) => _submitNewTag(tags),
+                      onEditingComplete: () => _submitNewTag(tags),
+                    ),
+                  )
+                else
+                  ActionChip(
+                    avatar: const Icon(Icons.add, size: 16),
+                    label: const Text('New tag'),
+                    onPressed: () => setState(() => _addingTag = true),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -345,7 +440,16 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (_dueDate != null && !_reminderEnabled)
+                      if (_dueDate != null &&
+                          !_reminderEnabled &&
+                          _repeatType == TaskRepeatType.none)
+                        // Clearing the due date on a repeating task would
+                        // just get silently re-defaulted back to today by
+                        // _save() (and by TaskService itself), which reads
+                        // as broken rather than intentional — so the
+                        // clear button is only offered for non-repeating
+                        // tasks, where "no due date" is a real, stable
+                        // state.
                         IconButton(
                           icon: const Icon(Icons.clear),
                           onPressed: () => setState(() => _dueDate = null),
@@ -385,6 +489,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                     }).toList(),
                   ),
                 ],
+                const Divider(height: 32),
+                _buildTagSection(),
                 const Divider(height: 32),
                 Text('Subtasks', style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),

@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
 import '../../models/tasks/task.dart';
+import '../../models/tags/tag.dart';
 import '../../services/tasks/task_service.dart';
+import '../../services/tags/tag_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/task_stats.dart';
 import '../../widgets/tasks/completion_heatmap.dart';
 
 class TaskStatsScreen extends StatelessWidget {
-  const TaskStatsScreen({super.key, required this.taskService});
+  const TaskStatsScreen({
+    super.key,
+    required this.taskService,
+    required this.tagService,
+  });
 
   final TaskService taskService;
+  final TagService tagService;
 
   @override
   Widget build(BuildContext context) {
@@ -54,21 +61,21 @@ class TaskStatsScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      _PriorityRow(
+                      _StatBarRow(
                         label: 'High',
                         count: stats.pendingHigh,
                         total: stats.totalPending,
                         color: AppColors.priorityHigh,
                       ),
                       const SizedBox(height: 8),
-                      _PriorityRow(
+                      _StatBarRow(
                         label: 'Medium',
                         count: stats.pendingMedium,
                         total: stats.totalPending,
                         color: AppColors.priorityMedium,
                       ),
                       const SizedBox(height: 8),
-                      _PriorityRow(
+                      _StatBarRow(
                         label: 'Low',
                         count: stats.pendingLow,
                         total: stats.totalPending,
@@ -78,6 +85,57 @@ class TaskStatsScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              // Only shown once there's at least one pending tagged (or
+              // untagged) task to report — an empty section here would
+              // just be dead space for anyone who hasn't used tags yet.
+              if (stats.pendingByTag.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Text('Pending by tag', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: StreamBuilder<List<Tag>>(
+                      stream: tagService.watchTags(),
+                      builder: (context, tagSnapshot) {
+                        final tags = tagSnapshot.data ?? [];
+                        final tagsById = {for (final t in tags) t.id: t};
+
+                        // Sorted by count descending so the busiest tags
+                        // surface first; untagged ('') always sorts last
+                        // regardless of count, since it's the "leftover"
+                        // bucket rather than a real tag someone chose.
+                        final entries = stats.pendingByTag.entries.toList()
+                          ..sort((a, b) {
+                            if (a.key.isEmpty) return 1;
+                            if (b.key.isEmpty) return -1;
+                            return b.value.compareTo(a.value);
+                          });
+
+                        return Column(
+                          children: [
+                            for (int i = 0; i < entries.length; i++) ...[
+                              if (i > 0) const SizedBox(height: 8),
+                              _StatBarRow(
+                                label: entries[i].key.isEmpty
+                                    ? 'No tag'
+                                    : (tagsById[entries[i].key]?.name ??
+                                        'Deleted tag'),
+                                count: entries[i].value,
+                                total: stats.totalPending,
+                                color: entries[i].key.isEmpty
+                                    ? AppColors.skip
+                                    : (tagsById[entries[i].key]?.color ??
+                                        AppColors.skip),
+                              ),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ],
           );
         },
@@ -116,8 +174,12 @@ class _RateCard extends StatelessWidget {
   }
 }
 
-class _PriorityRow extends StatelessWidget {
-  const _PriorityRow({
+/// A single labeled progress bar with a trailing count — used for both
+/// the priority breakdown and the tag breakdown, since the two are
+/// visually identical aside from label/color/count. Was named
+/// _PriorityRow before tags existed; renamed since it's genuinely generic.
+class _StatBarRow extends StatelessWidget {
+  const _StatBarRow({
     required this.label,
     required this.count,
     required this.total,
@@ -135,8 +197,12 @@ class _PriorityRow extends StatelessWidget {
     return Row(
       children: [
         SizedBox(
-          width: 60,
-          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+          width: 80,
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ),
         Expanded(
           child: ClipRRect(

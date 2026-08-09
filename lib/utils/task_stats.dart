@@ -31,6 +31,11 @@ class TaskStats {
   final int totalPending;
   final int totalCompleted;
 
+  /// Pending (not-yet-completed) task counts keyed by tagId. Untagged
+  /// pending tasks are grouped under the empty-string key '' — matches
+  /// how TaskStatsScreen reads this (empty key -> "No tag", sorted last).
+  final Map<String, int> pendingByTag;
+
   TaskStats({
     required this.byDate,
     required this.last7DaysRate,
@@ -40,6 +45,7 @@ class TaskStats {
     required this.pendingHigh,
     required this.totalPending,
     required this.totalCompleted,
+    required this.pendingByTag,
   });
 
   static TaskStats compute(List<Task> tasks, {int heatmapDays = 84}) {
@@ -71,6 +77,7 @@ class TaskStats {
     }
 
     int low = 0, medium = 0, high = 0, totalCompleted = 0;
+    final pendingByTag = <String, int>{};
     for (final task in tasks) {
       if (task.completed) {
         totalCompleted++;
@@ -86,6 +93,8 @@ class TaskStats {
             high++;
             break;
         }
+        final tagKey = task.tagId ?? '';
+        pendingByTag[tagKey] = (pendingByTag[tagKey] ?? 0) + 1;
       }
     }
 
@@ -98,6 +107,7 @@ class TaskStats {
       pendingHigh: high,
       totalPending: low + medium + high,
       totalCompleted: totalCompleted,
+      pendingByTag: pendingByTag,
     );
   }
 }

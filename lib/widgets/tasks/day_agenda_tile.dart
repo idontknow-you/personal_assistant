@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/tasks/task.dart';
+import '../../models/tags/tag.dart';
 
 /// A single task's row in the calendar's day agenda. Unlike TaskTile, this
 /// is scoped to one specific [day] rather than the task's live [completed]
@@ -19,12 +20,17 @@ class DayAgendaTile extends StatelessWidget {
     required this.day,
     required this.completed,
     required this.onToggle,
+    this.tag,
   });
 
   final Task task;
   final DateTime day;
   final bool completed;
   final VoidCallback? onToggle;
+
+  /// The resolved Tag for task.tagId, if any — resolved by the caller
+  /// (CalendarScreen) from TagService.watchTags(), same as TaskTile.tag.
+  final Tag? tag;
 
   Color _priorityColor(ColorScheme scheme) {
     switch (task.priority) {
@@ -54,6 +60,11 @@ class DayAgendaTile extends StatelessWidget {
     final repeatLabel = _repeatLabel();
     final isFuture = onToggle == null;
 
+    final subtitleParts = <String>[
+      if (isFuture) 'Not due yet',
+      if (repeatLabel != null) repeatLabel,
+    ];
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
@@ -78,16 +89,53 @@ class DayAgendaTile extends StatelessWidget {
                 : (isFuture ? theme.colorScheme.onSurfaceVariant : null),
           ),
         ),
-        subtitle: (isFuture || repeatLabel != null)
-            ? Text(
-                [
-                  if (isFuture) 'Not due yet',
-                  if (repeatLabel != null) repeatLabel,
-                ].join(' · '),
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        subtitle: (subtitleParts.isNotEmpty || tag != null)
+            ? Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (subtitleParts.isNotEmpty)
+                      Text(
+                        subtitleParts.join(' · '),
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    if (tag != null) ...[
+                      if (subtitleParts.isNotEmpty) const SizedBox(width: 8),
+                      _TagChip(tag: tag!),
+                    ],
+                  ],
+                ),
               )
             : null,
+      ),
+    );
+  }
+}
+
+/// Small pill showing a tag's name in its own color. See TaskTile's
+/// identical private copy for why this isn't shared/extracted.
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.tag});
+
+  final Tag tag;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: tag.color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        tag.name,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: tag.color,
+        ),
       ),
     );
   }

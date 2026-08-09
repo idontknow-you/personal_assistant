@@ -3,6 +3,7 @@ import '../../models/tasks/task.dart';
 import '../../services/tasks/task_service.dart';
 import '../../services/alarms/alarm_service.dart';
 import '../../services/habits/habit_service.dart';
+import '../../services/tags/tag_service.dart';
 import '../../widgets/tasks/task_tile.dart';
 import '../../widgets/tasks/completion_history_sheet.dart';
 import '../settings/settings_screen.dart';
@@ -25,6 +26,7 @@ class TaskListPage extends StatefulWidget {
 class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver {
   late final TaskService _taskService;
   late final HabitService _habitService;
+  late final TagService _tagService;
   TaskFilter _filter = TaskFilter.all;
 
   @override
@@ -33,6 +35,7 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _taskService = TaskService(widget.uid, alarmService: widget.alarmService);
     _habitService = HabitService(widget.uid);
+    _tagService = TagService(widget.uid);
     _taskService.runDailyRollover();
   }
 
@@ -62,6 +65,12 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
 
   void _showAddTaskSheet() {
     final controller = TextEditingController();
+    void submit() {
+      final title = controller.text.trim();
+      if (title.isEmpty) return;
+      _taskService.addTask(title);
+      Navigator.pop(context);
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -82,18 +91,12 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
                   decoration: const InputDecoration(
                     hintText: 'New task title',
                   ),
-                  onSubmitted: (value) {
-                    _taskService.addTask(value);
-                    Navigator.pop(context);
-                  },
+                  onSubmitted: (_) => submit(),
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.send),
-                onPressed: () {
-                  _taskService.addTask(controller.text);
-                  Navigator.pop(context);
-                },
+                onPressed: submit,
               ),
             ],
           ),
@@ -108,6 +111,7 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
         builder: (_) => TaskFormScreen(
           taskService: _taskService,
           alarmService: widget.alarmService,
+          tagService: _tagService,
           existingTask: existingTask,
         ),
       ),
@@ -117,7 +121,10 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
   void _openStats() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => TaskStatsScreen(taskService: _taskService),
+        builder: (_) => TaskStatsScreen(
+          taskService: _taskService,
+          tagService: _tagService,
+        ),
       ),
     );
   }
@@ -128,6 +135,7 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
         builder: (_) => CalendarScreen(
           taskService: _taskService,
           habitService: _habitService,
+          tagService: _tagService,
         ),
       ),
     );
