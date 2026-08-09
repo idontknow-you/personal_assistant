@@ -1,6 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/tags/tag.dart';
-import '../../theme/app_theme.dart';
 
 class TagService {
   final String uid;
@@ -18,20 +17,6 @@ class TagService {
       .collection('users')
       .doc(uid)
       .collection('tasks');
-
-  /// A new tag's color is derived deterministically from its name (hashed
-  /// into AppColors.tagPalette) rather than tracked/incremented via an
-  /// extra read, so tag creation stays a single write. Sourced from the
-  /// app's own palette (theme/app_theme.dart) rather than a list defined
-  /// here, so tag colors are drawn from the same brand hues as the rest
-  /// of the app instead of an unrelated rainbow.
-  String _colorForName(String name) {
-    final palette = AppColors.tagPalette;
-    final index = name.trim().toLowerCase().hashCode.abs() % palette.length;
-    final color = palette[index];
-    final hex = color.value.toRadixString(16).padLeft(8, '0');
-    return '#${hex.substring(2).toUpperCase()}';
-  }
 
   Stream<List<Tag>> watchTags() {
     return _tagsRef
@@ -54,21 +39,15 @@ class TagService {
     );
     if (match.isNotEmpty) return match.first.id;
 
-    final doc = await _tagsRef.add({
-      'name': trimmed,
-      'colorHex': _colorForName(trimmed),
-    });
+    final doc = await _tagsRef.add({'name': trimmed});
     return doc.id;
   }
 
-  /// Renames an existing tag. Deliberately does NOT re-derive colorHex
-  /// from the new name — color is assigned once at creation and then
-  /// treated as the tag's stable identity color; recomputing it on every
-  /// rename would make a tag's color jump around for no reason the user
-  /// asked for. Same duplicate-name guard as addTag: if [newName] already
-  /// matches another existing tag (case-insensitive), this is a no-op
-  /// rather than creating a naming collision. [existingTags] is passed in
-  /// the same way as addTag, for the same reason.
+  /// Renames an existing tag. Same duplicate-name guard as addTag: if
+  /// [newName] already matches another existing tag (case-insensitive),
+  /// this is a no-op rather than creating a naming collision.
+  /// [existingTags] is passed in the same way as addTag, for the same
+  /// reason.
   Future<void> updateTagName(
     String tagId,
     String newName,

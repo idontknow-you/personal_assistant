@@ -21,26 +21,6 @@ class AppColors {
     Color(0xFF1E9E52),
   ];
 
-  /// Colors for auto-assigned tag chips (see TagService._colorForName).
-  /// Deliberately NOT tied to any one ThemePalette — tags need to stay
-  /// legible and consistent regardless of which of the four presets is
-  /// active, same reasoning as priorityLow/Medium/High being fixed colors
-  /// rather than theme-derived. Pulled from hues already used across the
-  /// existing presets (Aare River teal, Lobster Pink, Bonfire orange,
-  /// Plaudit navy, Wine Plum, Purple Empire, plus one heatmap green and
-  /// Quing Yellow for warmth) so new tag colors still feel like they
-  /// belong to the app rather than a bolted-on rainbow.
-  static const List<Color> tagPalette = [
-    Color(0xFF0DBE9D), // Aare River teal
-    Color(0xFFD44D5C), // Lobster Pink
-    Color(0xFFF78358), // Bonfire orange
-    Color(0xFF3A516A), // Plaudit navy
-    Color(0xFF773344), // Wine Plum
-    Color(0xFF5C4B57), // Purple Empire
-    Color(0xFF1E9E52), // heatmap green
-    Color(0xFFC9971F), // deepened Quing Yellow (darkened for legibility as text/chip color)
-  ];
-
   static Color priorityColor(String priorityName) {
     switch (priorityName) {
       case 'high':
@@ -189,6 +169,31 @@ class AppTheme {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: p.primary,
+            foregroundColor: p.textOnPrimary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: p.surface,
+          indicatorColor: p.primary.withValues(alpha: 0.15),
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? p.primary : p.textSecondary,
+            );
+          }),
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return IconThemeData(
+              color: selected ? p.primary : p.textSecondary,
+            );
+          }),
+        ),
       );
 
   static ThemeData dark(ThemePalette p) => ThemeData(
@@ -218,6 +223,31 @@ class AppTheme {
             foregroundColor: p.textOnPrimary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: p.primary,
+            foregroundColor: p.textOnPrimary,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: p.surfaceDark,
+          indicatorColor: p.primary.withValues(alpha: 0.25),
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? p.primary : Colors.white70,
+            );
+          }),
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            final selected = states.contains(WidgetState.selected);
+            return IconThemeData(
+              color: selected ? p.primary : Colors.white70,
+            );
+          }),
         ),
       );
 }

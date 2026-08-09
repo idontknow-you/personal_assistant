@@ -92,7 +92,7 @@ class TagManagementScreen extends StatelessWidget {
               return ListTile(
                 leading: CircleAvatar(
                   radius: 10,
-                  backgroundColor: tag.color,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
                 ),
                 title: Text(tag.name),
                 trailing: Row(

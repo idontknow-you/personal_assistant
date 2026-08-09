@@ -47,6 +47,13 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   /// True while the inline "+ new tag" text field is showing.
   bool _addingTag = false;
 
+  /// Guards _submitNewTag against re-entrancy. TextField fires BOTH
+  /// onEditingComplete and onSubmitted on Enter/Done — without this,
+  /// hitting Enter once triggered two calls to TagService.addTag with the
+  /// same (stale) existingTags snapshot, so the in-flight dedupe check
+  /// never caught the second call and two identical tag docs got created.
+  bool _submittingTag = false;
+
   bool _reminderEnabled = false;
   TimeOfDay _reminderTime = const TimeOfDay(hour: 9, minute: 0);
 
@@ -169,16 +176,19 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   Future<void> _submitNewTag(List<Tag> existingTags) async {
+    if (_submittingTag) return;
     final name = _newTagController.text.trim();
     if (name.isEmpty) {
       setState(() => _addingTag = false);
       return;
     }
+    setState(() => _submittingTag = true);
     final newTagId = await widget.tagService.addTag(name, existingTags);
     if (!mounted) return;
     setState(() {
       if (newTagId.isNotEmpty) _tagId = newTagId;
       _addingTag = false;
+      _submittingTag = false;
       _newTagController.clear();
     });
   }
@@ -334,6 +344,11 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       stream: widget.tagService.watchTags(),
       builder: (context, snapshot) {
         final tags = snapshot.data ?? [];
+        // All tags share the app's theme primary color now (a task can
+        // only carry one tag at a time, so per-tag color never actually
+        // distinguished anything). Computed once per build rather than
+        // per-chip.
+        final tagColor = Theme.of(context).colorScheme.primary;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -349,9 +364,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   return ChoiceChip(
                     label: Text(tag.name),
                     selected: selected,
-                    selectedColor: tag.color.withValues(alpha: 0.25),
+                    selectedColor: tagColor.withValues(alpha: 0.25),
                     labelStyle: TextStyle(
-                      color: selected ? tag.color : null,
+                      color: selected ? tagColor : null,
                       fontWeight: selected ? FontWeight.w600 : null,
                     ),
                     onSelected: (_) => _selectTag(tag.id),
@@ -369,7 +384,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                         border: OutlineInputBorder(),
                       ),
                       onSubmitted: (_) => _submitNewTag(tags),
-                      onEditingComplete: () => _submitNewTag(tags),
                     ),
                   )
                 else
@@ -584,10 +598,15 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                 FilledButton(
                   onPressed: _canSave && !_saving ? _save : null,
                   child: _saving
-                      ? const SizedBox(
+                      ? SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(
+                              Theme.of(context).colorScheme.onPrimary,
+                            ),
+                          ),
                         )
                       : const Text('Save Task'),
                 ),

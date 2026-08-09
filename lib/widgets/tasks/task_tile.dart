@@ -216,10 +216,12 @@ class TaskTile extends StatelessWidget {
   }
 }
 
-/// Small pill showing a tag's name in its own color. Kept private to this
-/// file since DayAgendaTile defines an identical one independently rather
-/// than sharing — both are trivial enough that a shared widgets/tags/
-/// file felt like more indirection than it's worth for a single Container.
+/// Small pill showing a tag's name, colored with the active theme's
+/// primary color (tags no longer carry their own color — see Tag model).
+/// Kept private to this file since DayAgendaTile defines an identical one
+/// independently rather than sharing — both are trivial enough that a
+/// shared widgets/tags/ file felt like more indirection than it's worth
+/// for a single Container.
 class _TagChip extends StatelessWidget {
   const _TagChip({required this.tag});
 
@@ -227,10 +229,11 @@ class _TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tagColor = Theme.of(context).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: tag.color.withValues(alpha: 0.15),
+        color: tagColor.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(
@@ -238,7 +241,7 @@ class _TagChip extends StatelessWidget {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: tag.color,
+          color: tagColor,
         ),
       ),
     );

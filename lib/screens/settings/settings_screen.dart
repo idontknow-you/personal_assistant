@@ -153,6 +153,21 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
+          _SectionLabel('Tags'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.label_outline),
+              title: const Text('Manage tags'),
+              subtitle: const Text('Rename or delete your tags'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TagManagementScreen(tagService: tagService),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
           _SectionLabel('About & Data'),
           Card(
             child: Column(
@@ -161,17 +176,6 @@ class SettingsScreen extends StatelessWidget {
                   leading: Icon(Icons.info_outline),
                   title: Text('Personal OS'),
                   subtitle: Text('v1.0.0'),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.label_outline),
-                  title: const Text('Manage tags'),
-                  subtitle: const Text('Rename or delete your tags'),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => TagManagementScreen(tagService: tagService),
-                    ),
-                  ),
                 ),
                 const Divider(height: 1),
                 ListTile(

@@ -100,6 +100,13 @@ class TaskStatsScreen extends StatelessWidget {
                       builder: (context, tagSnapshot) {
                         final tags = tagSnapshot.data ?? [];
                         final tagsById = {for (final t in tags) t.id: t};
+                        // Every real tag shares the theme's primary color
+                        // now — a task only ever carries one tag, so
+                        // distinct per-tag colors never actually conveyed
+                        // anything here. Grey is reserved for the "No tag"
+                        // bucket so it still reads as visually distinct
+                        // from every tagged bar.
+                        final tagColor = Theme.of(context).colorScheme.primary;
 
                         // Sorted by count descending so the busiest tags
                         // surface first; untagged ('') always sorts last
@@ -125,8 +132,7 @@ class TaskStatsScreen extends StatelessWidget {
                                 total: stats.totalPending,
                                 color: entries[i].key.isEmpty
                                     ? AppColors.skip
-                                    : (tagsById[entries[i].key]?.color ??
-                                        AppColors.skip),
+                                    : tagColor,
                               ),
                             ],
                           ],
