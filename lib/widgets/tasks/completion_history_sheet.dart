@@ -87,7 +87,7 @@ class _CompletionHistorySheetState extends State<CompletionHistorySheet> {
             Text(
               'Tap a day to mark it done or undone',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 12),

@@ -42,6 +42,7 @@ class HabitTile extends StatelessWidget {
     // day-to-day regardless of week boundaries.
     final monday = today.subtract(Duration(days: today.weekday - 1));
     final days = List.generate(7, (i) => monday.add(Duration(days: i)));
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Card(
       child: InkWell(
@@ -112,7 +113,7 @@ class HabitTile extends StatelessWidget {
                         shape: BoxShape.circle,
                         color: _dotColor(status, expected),
                         border: isToday
-                            ? Border.all(color: AppColors.primary, width: 2)
+                            ? Border.all(color: primaryColor, width: 2)
                             : null,
                       ),
                       child: Center(

@@ -84,9 +84,19 @@ class _CalendarScreenState extends State<CalendarScreen> {
   // ---------------- Tasks ----------------
 
   /// Every day in the visible month this task counts as "due" on, unioned
-  /// with any completionLog dates in this month (covers backdated entries
-  /// that fall outside the computed recurrence, e.g. repeatDays changed
-  /// after the fact).
+  /// with any completionLog dates in this month — but ONLY for tasks that
+  /// actually have a real schedule (a dueDate, or a repeat pattern). The
+  /// completionLog union exists to support backdating: a repeating task
+  /// marked done for a day outside its normal computed pattern should
+  /// still surface on that day. It deliberately does NOT apply to
+  /// untethered tasks (no dueDate, repeatType.none) — those aren't due on
+  /// any particular day in the first place, so completing one shouldn't
+  /// pin it to whatever day happened to be "today" when it was checked
+  /// off (which is what TaskService.toggleComplete logs against for
+  /// tasks with no real dueDate). Without this guard, any no-due-date
+  /// task would appear glued to its completion day on the calendar the
+  /// moment you checked it off, which reads as "this was due today" even
+  /// though it was never scheduled at all.
   List<DateTime> _occurrencesInMonth(Task task) {
     final year = _visibleMonth.year;
     final month = _visibleMonth.month;
@@ -119,10 +129,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
         break;
     }
 
-    for (final key in task.completionLog.keys) {
-      final parsed = _parseKey(key);
-      if (parsed != null && parsed.year == year && parsed.month == month) {
-        occurrences.add(parsed);
+    // Untethered tasks (no dueDate, not repeating) have no real "day" to
+    // be pinned to — skip the completionLog union for them entirely so
+    // they never appear on the calendar at all, regardless of when they
+    // were checked off.
+    final isUntethered =
+        task.repeatType == TaskRepeatType.none && task.dueDate == null;
+    if (!isUntethered) {
+      for (final key in task.completionLog.keys) {
+        final parsed = _parseKey(key);
+        if (parsed != null && parsed.year == year && parsed.month == month) {
+          occurrences.add(parsed);
+        }
       }
     }
 
