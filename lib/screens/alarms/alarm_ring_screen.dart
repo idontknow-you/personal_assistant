@@ -385,21 +385,24 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
                     filled: true,
                   ),
 
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
 
-                  // Secondary action: Snooze — smaller, plain text button,
-                  // capped at _maxSnoozes. Once used up, it's replaced by
-                  // a small note instead of a disabled button, so it's
-                  // clear this ring cycle is out of snoozes rather than
-                  // looking like a bug.
+                  // Secondary action: Snooze — same pill size/shape as Stop
+                  // (just unfilled, so Stop still reads as primary), sitting
+                  // directly below it. Capped at _maxSnoozes; once used up,
+                  // it's replaced by a same-height note instead of a
+                  // disabled button, so it's clear this ring cycle is out
+                  // of snoozes rather than looking like a bug.
                   SizedBox(
-                    height: 36,
+                    height: 58,
                     child: _canSnooze
-                        ? _SnoozeButton(
+                        ? _GlassButton(
                             label: remainingSnoozes < _maxSnoozes
                                 ? 'Snooze 5 min · $remainingSnoozes left'
                                 : 'Snooze 5 min',
+                            icon: Icons.snooze_rounded,
                             onTap: () => _snooze(const Duration(minutes: 5)),
+                            filled: false,
                           )
                         : Center(
                             child: Text(
@@ -412,7 +415,11 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
                           ),
                   ),
 
-                  const SizedBox(height: 24),
+                  // Extra bottom breathing room — was 24, which read as
+                  // the button cluster sticking to the screen edge on
+                  // most devices. This lifts Stop/Snooze up off the
+                  // bottom without changing anything above them.
+                  const SizedBox(height: 48),
                 ],
               ),
             ),
@@ -472,7 +479,10 @@ class _GlowDotState extends State<_GlowDot> with SingleTickerProviderStateMixin 
   }
 }
 
-/// Frosted-glass pill button used for the primary action (Stop).
+/// Frosted-glass pill button — used for both Stop (filled) and Snooze
+/// (unfilled), so they share the same size/shape and only differ in
+/// fill/emphasis, keeping Stop read as primary without Snooze looking
+/// like an afterthought.
 class _GlassButton extends StatelessWidget {
   const _GlassButton({
     required this.label,
@@ -526,40 +536,6 @@ class _GlassButton extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Plain, muted text button used for the secondary action (Snooze). No
-/// frosted glass or fill — intentionally quieter than Stop so it doesn't
-/// compete with it, since Stop is the action most people should default to.
-class _SnoozeButton extends StatelessWidget {
-  const _SnoozeButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton.icon(
-      onPressed: onTap,
-      icon: Icon(
-        Icons.snooze_rounded,
-        size: 18,
-        color: Colors.white.withValues(alpha: 0.6),
-      ),
-      label: Text(
-        label,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.6),
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      style: TextButton.styleFrom(
-        minimumSize: const Size(0, 36),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
       ),
     );
   }
