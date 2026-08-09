@@ -22,7 +22,7 @@ class TaskListPage extends StatefulWidget {
   State<TaskListPage> createState() => _TaskListPageState();
 }
 
-class _TaskListPageState extends State<TaskListPage> {
+class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver {
   late final TaskService _taskService;
   late final HabitService _habitService;
   TaskFilter _filter = TaskFilter.all;
@@ -30,9 +30,34 @@ class _TaskListPageState extends State<TaskListPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _taskService = TaskService(widget.uid, alarmService: widget.alarmService);
     _habitService = HabitService(widget.uid);
     _taskService.runDailyRollover();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // initState() only runs once when this widget first mounts — if the app
+  // is just backgrounded and resumed (not fully killed and relaunched),
+  // Flutter doesn't rebuild the tree, so initState never fires again. That
+  // meant runDailyRollover() only ever ran on a cold start: check a daily
+  // task off, background the app overnight instead of closing it, reopen
+  // it the next morning — the calendar day had genuinely changed, but
+  // nothing ever told the app to re-check, so repeating tasks stayed
+  // "completed" from yesterday instead of resetting. Re-running rollover
+  // here on every resume (it's cheap to call — runDailyRollover() itself
+  // early-returns via lastCheckedDate if it already ran today) closes
+  // that gap.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _taskService.runDailyRollover();
+    }
   }
 
   void _showAddTaskSheet() {

@@ -42,6 +42,25 @@ class TaskService {
         );
   }
 
+  /// A repeating task with no [dueDate] is invisible to
+  /// runDailyRollover()'s Firestore query (which filters on dueDate), so
+  /// it can never reset to unchecked the next day — it just stays stuck
+  /// at whatever `completed` was last set to. TaskFormScreen already
+  /// defaults dueDate to today when repeat is turned on, but that only
+  /// covers the one UI path; this is a second, lower-level guarantee so
+  /// ANY caller (direct writes, other screens, future features) can't
+  /// recreate a repeating task with no dueDate. Defaults to "now" —
+  /// callers that want a specific date should just pass one.
+  Timestamp? _ensureDueDateForRepeat(
+    TaskRepeatType repeatType,
+    Timestamp? dueDate,
+  ) {
+    if (repeatType != TaskRepeatType.none && dueDate == null) {
+      return Timestamp.now();
+    }
+    return dueDate;
+  }
+
   Future<String> addTask(
     String title, {
     Timestamp? dueDate,
@@ -53,12 +72,13 @@ class TaskService {
   }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return '';
+    final effectiveDueDate = _ensureDueDateForRepeat(repeatType, dueDate);
     final doc = await _tasksRef.add({
       'title': trimmed,
       'completed': false,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'dueDate': dueDate,
+      'dueDate': effectiveDueDate,
       'repeatType': repeatType.name,
       'repeatDays': repeatDays.toList(),
       'linkedAlarmId': null,
@@ -71,7 +91,12 @@ class TaskService {
   }
 
   Future<void> updateTask(Task task) async {
-    await _tasksRef.doc(task.id).update(task.toMap());
+    final effectiveDueDate =
+        _ensureDueDateForRepeat(task.repeatType, task.dueDate);
+    final effectiveTask = effectiveDueDate == task.dueDate
+        ? task
+        : task.copyWith(dueDate: effectiveDueDate);
+    await _tasksRef.doc(task.id).update(effectiveTask.toMap());
   }
 
   Future<void> setLinkedAlarm(String taskId, int alarmId) async {
@@ -159,9 +184,9 @@ class TaskService {
   /// untouched — so the Tasks screen checkbox stayed unchecked, making the
   /// task look like it still needed to be done today even though you'd
   /// just marked it done. A dueDate-less task that IS repeating is a
-  /// defensive edge case (shouldn't normally happen — TaskFormScreen
-  /// always assigns repeating tasks a dueDate) and keeps the old "today"
-  /// fallback.
+  /// defensive edge case (shouldn't normally happen — TaskService now
+  /// guarantees repeating tasks always get a dueDate via
+  /// _ensureDueDateForRepeat) and keeps the old "today" fallback.
   Future<void> setCompletionForDate(
     Task task,
     DateTime date,
@@ -242,10 +267,12 @@ class TaskService {
   ///
   /// IMPORTANT: this only finds tasks via a query on `dueDate`, so a
   /// repeating task with no `dueDate` set is invisible to it and will
-  /// never roll over. TaskFormScreen now guarantees repeating tasks always
-  /// get a dueDate (defaulting to today) at creation/edit time specifically
-  /// so they stay visible to this query — if that ever changes, rollover
-  /// needs a different way to find repeating tasks.
+  /// never roll over. Both TaskFormScreen and TaskService.addTask() /
+  /// updateTask() now guarantee repeating tasks always get a dueDate
+  /// (defaulting to today) so they stay visible to this query — if a task
+  /// somehow still ends up repeating with no dueDate (e.g. a doc written
+  /// before this guarantee existed), it will silently never roll over
+  /// until it's resaved with a dueDate.
   ///
   /// LIMITATION: only ever checks "yesterday relative to today," once per
   /// calendar day the app is opened — a multi-day gap only evaluates the
@@ -332,5 +359,35 @@ class TaskService {
       }
     }
     return from;
+  }
+
+  /// One-off cleanup for tasks created before TaskService guaranteed a
+  /// dueDate on repeating tasks (e.g. any doc from before this fix
+  /// shipped). Finds repeating tasks with no dueDate — which are
+  /// permanently invisible to runDailyRollover()'s query — and patches
+  /// them with today's date so rollover can pick them up going forward.
+  /// Safe to call multiple times; only touches docs matching that stale
+  /// shape. Call this once (e.g. from a debug button or directly) rather
+  /// than on every app start.
+  Future<int> backfillMissingDueDatesOnRepeatingTasks() async {
+    final snap = await _tasksRef
+        .where('repeatType', whereIn: [
+      TaskRepeatType.daily.name,
+      TaskRepeatType.weekly.name,
+    ]).get();
+
+    final today = Timestamp.fromDate(startOfDay(DateTime.now()));
+    var fixed = 0;
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      if (data['dueDate'] == null) {
+        await doc.reference.update({
+          'dueDate': today,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        fixed++;
+      }
+    }
+    return fixed;
   }
 }

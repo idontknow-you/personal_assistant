@@ -183,7 +183,7 @@ class TaskTile extends StatelessWidget {
                           child: Text(
                             sub.title,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: AppColors.textSecondary,
+                              color: theme.colorScheme.onSurfaceVariant,
                               decoration: sub.isCompleted
                                   ? TextDecoration.lineThrough
                                   : null,

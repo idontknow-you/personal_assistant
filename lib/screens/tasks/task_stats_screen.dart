@@ -102,7 +102,7 @@ class _RateCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: theme.textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
+              color: theme.colorScheme.onSurfaceVariant,
             )),
             const SizedBox(height: 4),
             Text(

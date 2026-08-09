@@ -404,7 +404,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                                     ? TextDecoration.lineThrough
                                     : null,
                                 color: sub.isCompleted
-                                    ? AppColors.textSecondary
+                                    ? Theme.of(context).colorScheme.onSurfaceVariant
                                     : null,
                               ),
                             ),
