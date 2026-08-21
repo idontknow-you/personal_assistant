@@ -6,24 +6,38 @@ import '../../models/alarms/alarm.dart';
 /// Markers used in a re-ring alarm's notification body so the ring screen
 /// can tell what KIND of ring this is, without needing any extra fields
 /// on AlarmSettings itself:
-///  - missedRetry: the automatic 5-minute retry after a ring timed out
-///    unanswered (see AlarmService.scheduleMissedRetry).
+///  - missedRetry: the automatic 5-minute retry after a standalone alarm
+///    ring timed out unanswered (see AlarmService.scheduleMissedRetry).
+///  - escalated(n): rung n of a task-linked reminder's escalating ladder
+///    (see AlarmService.scheduleEscalatedRetry). n is 0-based.
 ///  - snoozed(n): the user tapped Snooze; n is how many times they've
 ///    snoozed THIS ring cycle so far, so the ring screen can cap it.
-/// These two are mutually exclusive markers, both stored in the same
-/// body field the ring screen doesn't otherwise display.
+/// These are mutually exclusive markers, all stored in the same body
+/// field the ring screen doesn't otherwise display.
 class AlarmRingMarkers {
   static const missedRetry = '__missed_retry__';
 
   static const _snoozedPrefix = '__snoozed__:';
+  static const _escalatedPrefix = '__escalated__:';
 
   static String snoozed(int count) => '$_snoozedPrefix$count';
 
   /// Returns the snooze count encoded in [body], or 0 if this ring isn't
-  /// a snoozed one (fresh ring, or a missed-retry ring).
+  /// a snoozed one (fresh ring, or a missed-retry/escalated ring).
   static int snoozeCountFrom(String body) {
     if (!body.startsWith(_snoozedPrefix)) return 0;
     return int.tryParse(body.substring(_snoozedPrefix.length)) ?? 0;
+  }
+
+  /// Stage marker for a task-linked reminder's escalating retry. Stage 0
+  /// is the first rung; the last rung's timeout means "give up".
+  static String escalated(int stage) => '$_escalatedPrefix$stage';
+
+  /// Returns the escalation stage encoded in [body], or -1 if this ring
+  /// isn't an escalated task-linked retry.
+  static int escalationStageFrom(String body) {
+    if (!body.startsWith(_escalatedPrefix)) return -1;
+    return int.tryParse(body.substring(_escalatedPrefix.length)) ?? -1;
   }
 }
 
@@ -236,11 +250,41 @@ class AlarmService {
 
   // ---------------- Missed-alarm auto-retry ----------------
 
-  /// Called by the ring screen when an alarm has been ringing for the
-  /// full timeout window with no user response. Reschedules a one-shot
-  /// retry 5 minutes later, tagged with [AlarmRingMarkers.missedRetry] so
-  /// the ring screen knows to give up (instead of retrying forever) if
-  /// this one also times out.
+  /// Escalating reminder ladder for TASK-LINKED reminders only: retries
+  /// at 5 min → 15 min → 1 hr, giving up only after the final rung times
+  /// out unanswered. Standalone alarms deliberately do NOT use this —
+  /// they keep the single 5-minute retry via [scheduleMissedRetry]. The
+  /// ring screen picks the path by checking the alarm's linkedTaskId.
+  static const escalationIntervals = [
+    Duration(minutes: 5),
+    Duration(minutes: 15),
+    Duration(hours: 1),
+  ];
+
+  /// Schedules rung [stage] (0-based, indexes [escalationIntervals]) of a
+  /// task-linked reminder's escalating retry, tagged with
+  /// [AlarmRingMarkers.escalated] so the ring screen knows to advance to
+  /// the next rung on timeout — or give up if this was the last one.
+  Future<void> scheduleEscalatedRetry(
+    alarm_pkg.AlarmSettings original,
+    int stage,
+  ) async {
+    final retrySettings = original.copyWith(
+      dateTime: DateTime.now().add(escalationIntervals[stage]),
+      notificationSettings: alarm_pkg.NotificationSettings(
+        title: original.notificationSettings.title,
+        body: AlarmRingMarkers.escalated(stage),
+        stopButton: original.notificationSettings.stopButton,
+      ),
+    );
+    await alarm_pkg.Alarm.set(alarmSettings: retrySettings);
+  }
+
+  /// Called by the ring screen when a STANDALONE alarm (not linked to a
+  /// task) has been ringing for the full timeout window with no user
+  /// response. Reschedules a one-shot retry 5 minutes later, tagged with
+  /// [AlarmRingMarkers.missedRetry] so the ring screen knows to give up
+  /// (instead of retrying forever) if this one also times out.
   Future<void> scheduleMissedRetry(alarm_pkg.AlarmSettings original) async {
     final retrySettings = original.copyWith(
       dateTime: DateTime.now().add(const Duration(minutes: 5)),

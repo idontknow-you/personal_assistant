@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, MethodCall;
 import 'package:alarm/alarm.dart' as alarm_pkg;
@@ -52,18 +54,30 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
   Timer? _clockTimer;
   DateTime _now = DateTime.now();
 
+  /// The linked task's "why it matters" commitment text, if any — loaded
+  /// best-effort in initState. Empty string renders nothing, so standalone
+  /// alarms (no linked task) and offline/error lookups just show the
+  /// normal ring screen with no extra section.
+  String _commitmentText = '';
+
   /// How long an alarm rings unanswered before we treat it as missed.
   /// Tweak freely — 60s felt like a reasonable "gave it a real chance to
   /// wake someone up" window without ringing forever.
   static const _ringTimeoutDuration = Duration(seconds: 60);
   Timer? _ringTimeoutTimer;
 
-  /// True if this ring is the automatic 5-minute retry (not the original
-  /// alarm firing). Tagged via the notification body when the retry was
-  /// scheduled — see AlarmService.scheduleMissedRetry.
+  /// True if this ring is the automatic 5-minute retry for a STANDALONE
+  /// alarm (not linked to a task). Tagged via the notification body when
+  /// the retry was scheduled — see AlarmService.scheduleMissedRetry.
   bool get _isRetryRing =>
       widget.ringingSettings.notificationSettings.body ==
       AlarmRingMarkers.missedRetry;
+
+  /// Which rung of the task-linked escalation ladder this ring is
+  /// (0-based, see AlarmService.escalationIntervals), or -1 if it isn't
+  /// an escalated retry (fresh ring, standalone retry, or snoozed).
+  int get _escalationStage => AlarmRingMarkers.escalationStageFrom(
+      widget.ringingSettings.notificationSettings.body);
 
   /// How many times this ring cycle has already been snoozed, decoded from
   /// the notification body (see AlarmRingMarkers.snoozed/snoozeCountFrom).
@@ -90,6 +104,36 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
+
+    _loadCommitmentText();
+  }
+
+  /// Best-effort fetch of the linked task's commitment text: alarm →
+  /// linkedTaskId → task doc → commitmentText. Any failure (offline,
+  /// standalone alarm, task deleted) just leaves [_commitmentText] empty
+  /// and the ring screen renders unchanged — this must never block or
+  /// delay an actual ringing alarm.
+  Future<void> _loadCommitmentText() async {
+    try {
+      final alarm = await widget.alarmService.getAlarm(
+        widget.ringingSettings.id,
+      );
+      final taskId = alarm?.linkedTaskId;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (taskId == null || uid == null) return;
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('tasks')
+          .doc(taskId)
+          .get();
+      if (!doc.exists) return;
+      final text = (doc.data()?['commitmentText'] as String?) ?? '';
+      if (!mounted || text.isEmpty) return;
+      setState(() => _commitmentText = text);
+    } catch (_) {
+      // Silent best-effort — see doc comment above.
+    }
   }
 
   @override
@@ -154,10 +198,13 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
   }
 
   /// Fired when the alarm has been ringing unanswered for
-  /// [_ringTimeoutDuration]. First time round: stop the sound and
-  /// schedule one retry 5 minutes out. If THIS was already the retry:
-  /// give up, leave a "missed alarm" notification, and run the normal
-  /// post-ring bookkeeping so the alarm doesn't keep firing forever.
+  /// [_ringTimeoutDuration]. What happens next depends on the alarm type:
+  ///  - Fresh task-linked reminder: schedule rung 0 of the escalation
+  ///    ladder (5 min → 15 min → 1 hr; only the final rung gives up).
+  ///  - Fresh standalone alarm: schedule the single 5-minute retry.
+  ///  - Escalation rung that timed out: advance to the next rung, or give
+  ///    up after the last one (missed notification + post-ring bookkeeping).
+  ///  - Standalone retry that timed out: give up (same bookkeeping).
   Future<void> _handleRingTimeout() async {
     if (_handled) return;
     _handled = true;
@@ -170,17 +217,34 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
 
     try {
       if (_isRetryRing) {
-        await widget.alarmService.fireMissedNotification(widget.ringingSettings);
-        final alarm = await widget.alarmService.getAlarm(widget.ringingSettings.id);
-        if (alarm != null) {
-          if (alarm.type == models.AlarmType.oneTime) {
-            await widget.alarmService.setEnabled(alarm, false);
-          } else {
-            await widget.alarmService.rescheduleAfterRing(alarm);
-          }
+        // Standalone alarm's retry timed out — give up.
+        await _giveUpAfterMissedRing();
+      } else if (_escalationStage >= 0) {
+        // Task-linked escalation rung timed out. Advance to the next
+        // rung unless this was the final one, in which case give up.
+        final nextStage = _escalationStage + 1;
+        if (nextStage < AlarmService.escalationIntervals.length) {
+          await widget.alarmService.scheduleEscalatedRetry(
+            widget.ringingSettings,
+            nextStage,
+          );
+        } else {
+          await _giveUpAfterMissedRing();
         }
       } else {
-        await widget.alarmService.scheduleMissedRetry(widget.ringingSettings);
+        // Fresh ring. Task-linked reminders get the escalating ladder;
+        // standalone alarms keep the single 5-minute retry.
+        final alarm = await widget.alarmService.getAlarm(
+          widget.ringingSettings.id,
+        );
+        if (alarm?.linkedTaskId != null) {
+          await widget.alarmService.scheduleEscalatedRetry(
+            widget.ringingSettings,
+            0,
+          );
+        } else {
+          await widget.alarmService.scheduleMissedRetry(widget.ringingSettings);
+        }
       }
     } catch (_) {
       // Bookkeeping/retry-scheduling failure shouldn't trap the user here.
@@ -189,6 +253,23 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
     _popRoute();
     await WidgetsBinding.instance.endOfFrame;
     await NativeBridge.moveTaskToBack();
+  }
+
+  /// Shared "this alarm is never coming back" cleanup: leave a missed
+  /// notification, then disable a one-time alarm or reschedule a
+  /// repeating one so it doesn't keep firing forever.
+  Future<void> _giveUpAfterMissedRing() async {
+    await widget.alarmService.fireMissedNotification(widget.ringingSettings);
+    final alarm = await widget.alarmService.getAlarm(
+      widget.ringingSettings.id,
+    );
+    if (alarm != null) {
+      if (alarm.type == models.AlarmType.oneTime) {
+        await widget.alarmService.setEnabled(alarm, false);
+      } else {
+        await widget.alarmService.rescheduleAfterRing(alarm);
+      }
+    }
   }
 
   /// Runs the same "what happens after an alarm stops" bookkeeping
@@ -338,6 +419,33 @@ class _AlarmRingScreenState extends State<AlarmRingScreen>
                         color: Colors.white.withValues(alpha: 0.4),
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+
+                  if (_commitmentText.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    // The task's "why it matters" text — the user's own
+                    // written reason, shown back to them while the alarm
+                    // rings. Styled softer than the label/time so it
+                    // supports the moment rather than competing with it.
+                    Icon(
+                      Icons.format_quote_rounded,
+                      size: 18,
+                      color: Colors.white.withValues(alpha: 0.4),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _commitmentText,
+                      textAlign: TextAlign.center,
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.75),
+                        fontSize: 17,
+                        fontStyle: FontStyle.italic,
+                        fontWeight: FontWeight.w400,
+                        height: 1.4,
                       ),
                     ),
                   ],

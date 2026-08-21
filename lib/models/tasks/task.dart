@@ -68,6 +68,12 @@ class Task {
   /// without null-checking everywhere.
   final String notes;
 
+  /// The "why it matters" commitment text — the user's own reason for
+  /// doing this task, written while it still matters and shown back to
+  /// them when the task's reminder alarm rings (see AlarmRingScreen).
+  /// Optional, defaults to empty string like [notes].
+  final String commitmentText;
+
   /// Id of the single Tag (see models/tags/tag.dart) this task is
   /// assigned to, or null for no tag. A task can only ever have one tag —
   /// this is NOT a list. Resolving the id to an actual Tag (name/color)
@@ -96,6 +102,7 @@ class Task {
     this.priority = Priority.low,
     this.subtasks = const [],
     this.notes = '',
+    this.commitmentText = '',
     this.tagId,
     this.completionLog = const {},
   });
@@ -125,6 +132,8 @@ class Task {
           .toList(),
       // Defensive default for old docs written before this field existed.
       notes: data['notes'] as String? ?? '',
+      // Defensive default for old docs written before this field existed.
+      commitmentText: data['commitmentText'] as String? ?? '',
       // Defensive default for old docs written before tags existed.
       tagId: data['tagId'] as String?,
       completionLog: Map<String, bool>.from(
@@ -146,6 +155,7 @@ class Task {
       'priority': priority.name,
       'subtasks': subtasks.map((s) => s.toMap()).toList(),
       'notes': notes,
+      'commitmentText': commitmentText,
       'tagId': tagId,
       'completionLog': completionLog,
     };
@@ -168,6 +178,7 @@ class Task {
     Priority? priority,
     List<Subtask>? subtasks,
     String? notes,
+    String? commitmentText,
     String? tagId,
     bool clearTagId = false,
     Map<String, bool>? completionLog,
@@ -199,6 +210,7 @@ class Task {
       priority: priority ?? this.priority,
       subtasks: subtasks ?? this.subtasks,
       notes: notes ?? this.notes,
+      commitmentText: commitmentText ?? this.commitmentText,
       tagId: clearTagId ? null : (tagId ?? this.tagId),
       completionLog: completionLog ?? this.completionLog,
     );

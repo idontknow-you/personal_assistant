@@ -18,7 +18,7 @@ class HabitTile extends StatelessWidget {
   });
 
   Color _dotColor(HabitDayStatus? status, bool expected) {
-    if (!expected) return AppColors.skip.withOpacity(0.15);
+    if (!expected) return AppColors.skip.withValues(alpha: 0.15);
     switch (status) {
       case HabitDayStatus.done:
         return AppColors.success;
@@ -27,7 +27,7 @@ class HabitTile extends StatelessWidget {
       case HabitDayStatus.missed:
         return AppColors.error;
       case null:
-        return AppColors.skip.withOpacity(0.25);
+        return AppColors.skip.withValues(alpha: 0.25);
     }
   }
 
@@ -94,12 +94,12 @@ class HabitTile extends StatelessWidget {
                   // white works, everything else is a light tint so a
                   // muted dark tone reads better.
                   final letterColor = (status == HabitDayStatus.skipped)
-                      ? Colors.white.withOpacity(0.85)
+                      ? Colors.white.withValues(alpha: 0.85)
                       : Theme.of(context)
                           .textTheme
                           .labelSmall
                           ?.color
-                          ?.withOpacity(0.6);
+                          ?.withValues(alpha: 0.6);
 
                   return GestureDetector(
                     // Only today's dot is editable. Past/future dots are

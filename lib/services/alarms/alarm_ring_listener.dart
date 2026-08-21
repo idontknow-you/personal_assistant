@@ -35,7 +35,14 @@ class AlarmRingListener with WidgetsBindingObserver {
   int? _activeRingAlarmId;
 
   void start() {
-    _subscription = alarm_pkg.Alarm.ringStream.stream.listen(_onRing);
+    // ringStream is deprecated; Alarm.ringing emits the full set of
+    // currently-ringing alarms on every change (an alarm is added when it
+    // starts ringing and removed when it stops). .expand() flattens each
+    // set into individual AlarmSettings events, and _onRing dedupes by id,
+    // so repeat emissions for the same alarm are safe to ignore.
+    _subscription = alarm_pkg.Alarm.ringing
+        .expand((ringingSet) => ringingSet.alarms)
+        .listen(_onRing);
     WidgetsBinding.instance.addObserver(this);
 
     // Cold-start guard: if an alarm was already ringing when the process

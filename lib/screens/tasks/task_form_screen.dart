@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/tasks/task.dart';
-import '../../models/tags/tag.dart';
 import '../../models/alarms/alarm.dart' as alarm_model;
 import '../../services/tasks/task_service.dart';
 import '../../services/alarms/alarm_service.dart';
 import '../../services/tags/tag_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/tasks/tag_section.dart';
+import '../../widgets/tasks/subtask_list.dart';
 
 class TaskFormScreen extends StatefulWidget {
   const TaskFormScreen({
@@ -34,25 +35,13 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   };
 
   late TextEditingController _titleController;
-  late TextEditingController _subtaskInputController;
   late TextEditingController _notesController;
-  late TextEditingController _newTagController;
   DateTime? _dueDate;
   TaskRepeatType _repeatType = TaskRepeatType.none;
   Set<int> _repeatDays = {};
   Priority _priority = Priority.low;
   List<Subtask> _subtasks = [];
   String? _tagId;
-
-  /// True while the inline "+ new tag" text field is showing.
-  bool _addingTag = false;
-
-  /// Guards _submitNewTag against re-entrancy. TextField fires BOTH
-  /// onEditingComplete and onSubmitted on Enter/Done — without this,
-  /// hitting Enter once triggered two calls to TagService.addTag with the
-  /// same (stale) existingTags snapshot, so the in-flight dedupe check
-  /// never caught the second call and two identical tag docs got created.
-  bool _submittingTag = false;
 
   bool _reminderEnabled = false;
   TimeOfDay _reminderTime = const TimeOfDay(hour: 9, minute: 0);
@@ -71,9 +60,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     super.initState();
     final t = widget.existingTask;
     _titleController = TextEditingController(text: t?.title ?? '');
-    _subtaskInputController = TextEditingController();
     _notesController = TextEditingController(text: t?.notes ?? '');
-    _newTagController = TextEditingController();
     _dueDate = t?.dueDate?.toDate();
     _repeatType = t?.repeatType ?? TaskRepeatType.none;
     _repeatDays = {...(t?.repeatDays ?? const {})};
@@ -101,9 +88,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   @override
   void dispose() {
     _titleController.dispose();
-    _subtaskInputController.dispose();
     _notesController.dispose();
-    _newTagController.dispose();
     super.dispose();
   }
 
@@ -136,60 +121,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
       if (val && _dueDate == null) {
         _dueDate = DateTime.now();
       }
-    });
-  }
-
-  void _addSubtask() {
-    final title = _subtaskInputController.text.trim();
-    if (title.isEmpty) return;
-    setState(() {
-      _subtasks = [
-        ..._subtasks,
-        Subtask(
-          id: DateTime.now().microsecondsSinceEpoch.toString(),
-          title: title,
-        ),
-      ];
-      _subtaskInputController.clear();
-    });
-  }
-
-  void _removeSubtask(String id) {
-    setState(() {
-      _subtasks = _subtasks.where((s) => s.id != id).toList();
-    });
-  }
-
-  void _toggleSubtaskLocal(String id, bool value) {
-    setState(() {
-      _subtasks = _subtasks
-          .map((s) => s.id == id ? s.copyWith(isCompleted: value) : s)
-          .toList();
-    });
-  }
-
-  void _selectTag(String? tagId) {
-    // Tapping the already-selected tag deselects it — a single tap is the
-    // only way to both pick and clear a tag, since there's no separate
-    // "None" affordance once a tag is chosen.
-    setState(() => _tagId = _tagId == tagId ? null : tagId);
-  }
-
-  Future<void> _submitNewTag(List<Tag> existingTags) async {
-    if (_submittingTag) return;
-    final name = _newTagController.text.trim();
-    if (name.isEmpty) {
-      setState(() => _addingTag = false);
-      return;
-    }
-    setState(() => _submittingTag = true);
-    final newTagId = await widget.tagService.addTag(name, existingTags);
-    if (!mounted) return;
-    setState(() {
-      if (newTagId.isNotEmpty) _tagId = newTagId;
-      _addingTag = false;
-      _submittingTag = false;
-      _newTagController.clear();
     });
   }
 
@@ -339,67 +270,6 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     }
   }
 
-  Widget _buildTagSection() {
-    return StreamBuilder<List<Tag>>(
-      stream: widget.tagService.watchTags(),
-      builder: (context, snapshot) {
-        final tags = snapshot.data ?? [];
-        // All tags share the app's theme primary color now (a task can
-        // only carry one tag at a time, so per-tag color never actually
-        // distinguished anything). Computed once per build rather than
-        // per-chip.
-        final tagColor = Theme.of(context).colorScheme.primary;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Tag', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ...tags.map((tag) {
-                  final selected = _tagId == tag.id;
-                  return ChoiceChip(
-                    label: Text(tag.name),
-                    selected: selected,
-                    selectedColor: tagColor.withValues(alpha: 0.25),
-                    labelStyle: TextStyle(
-                      color: selected ? tagColor : null,
-                      fontWeight: selected ? FontWeight.w600 : null,
-                    ),
-                    onSelected: (_) => _selectTag(tag.id),
-                  );
-                }),
-                if (_addingTag)
-                  SizedBox(
-                    width: 140,
-                    child: TextField(
-                      controller: _newTagController,
-                      autofocus: true,
-                      decoration: const InputDecoration(
-                        hintText: 'Tag name',
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      onSubmitted: (_) => _submitNewTag(tags),
-                    ),
-                  )
-                else
-                  ActionChip(
-                    avatar: const Icon(Icons.add, size: 16),
-                    label: const Text('New tag'),
-                    onPressed: () => setState(() => _addingTag = true),
-                  ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -504,56 +374,15 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   ),
                 ],
                 const Divider(height: 32),
-                _buildTagSection(),
+                TagSection(
+                  tagService: widget.tagService,
+                  selectedTagId: _tagId,
+                  onTagSelected: (id) => setState(() => _tagId = id),
+                ),
                 const Divider(height: 32),
-                Text('Subtasks', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                ..._subtasks.map((sub) => Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Row(
-                        children: [
-                          Checkbox(
-                            value: sub.isCompleted,
-                            onChanged: (val) => _toggleSubtaskLocal(sub.id, val!),
-                          ),
-                          Expanded(
-                            child: Text(
-                              sub.title,
-                              style: TextStyle(
-                                decoration: sub.isCompleted
-                                    ? TextDecoration.lineThrough
-                                    : null,
-                                color: sub.isCompleted
-                                    ? Theme.of(context).colorScheme.onSurfaceVariant
-                                    : null,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: () => _removeSubtask(sub.id),
-                          ),
-                        ],
-                      ),
-                    )),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _subtaskInputController,
-                        decoration: const InputDecoration(
-                          hintText: 'Add a subtask',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                        onSubmitted: (_) => _addSubtask(),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: _addSubtask,
-                    ),
-                  ],
+                SubtaskList(
+                  subtasks: _subtasks,
+                  onChanged: (subs) => setState(() => _subtasks = subs),
                 ),
                 const Divider(height: 32),
                 Text('Notes', style: Theme.of(context).textTheme.titleMedium),

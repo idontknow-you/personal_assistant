@@ -62,7 +62,7 @@ class DayAgendaTile extends StatelessWidget {
 
     final subtitleParts = <String>[
       if (isFuture) 'Not due yet',
-      if (repeatLabel != null) repeatLabel,
+      ?repeatLabel,
     ];
 
     return Container(
