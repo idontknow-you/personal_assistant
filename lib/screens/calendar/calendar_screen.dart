@@ -497,7 +497,7 @@ class _HabitAgendaTile extends StatelessWidget {
         height: 28,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isFuture ? statusColor.withOpacity(0.3) : statusColor,
+          color: isFuture ? statusColor.withValues(alpha: 0.3) : statusColor,
         ),
         child: icon != null
             ? Icon(icon, size: 16, color: Colors.white)
