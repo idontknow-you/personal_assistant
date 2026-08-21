@@ -1,8 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../main.dart';
 import '../../services/auth_service.dart';
+import '../../services/profile_service.dart';
 import '../../services/tags/tag_service.dart';
 import '../../theme/app_theme.dart';
 import '../tags/tag_management_screen.dart';
@@ -15,7 +18,6 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authService = AuthService();
-    final user = authService.currentUser;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -24,28 +26,96 @@ class SettingsScreen extends StatelessWidget {
         children: [
           _SectionLabel('Account'),
           Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.person_outline),
-                  title: const Text('Anonymous account'),
-                  subtitle: Text(
-                    user != null
-                        ? 'ID: ${user.uid.substring(0, 8)}…'
-                        : 'Not signed in',
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.logout, color: AppColors.error),
-                  title: Text(
-                    'Sign out',
-                    style: TextStyle(color: AppColors.error),
-                  ),
-                  subtitle: const Text('This will permanently lose access to your data'),
-                  onTap: () => _confirmSignOut(context, authService),
-                ),
-              ],
+            // StreamBuilder keeps this card live: upgrading an anonymous
+            // account to email (or signing in/out) updates it in place
+            // without a manual rebuild.
+            child: StreamBuilder<User?>(
+              stream: authService.authStateChanges,
+              builder: (context, snapshot) {
+                final user = snapshot.data;
+                final isAnonymous = user?.isAnonymous ?? true;
+                return Column(
+                  children: [
+                    ListTile(
+                      leading: Icon(
+                        isAnonymous
+                            ? Icons.person_outline
+                            : Icons.alternate_email,
+                      ),
+                      title: Text(
+                        isAnonymous ? 'Anonymous account' : 'Email account',
+                      ),
+                      subtitle: Text(
+                        isAnonymous
+                            ? (user != null
+                                ? 'ID: ${user.uid.substring(0, 8)}…'
+                                : 'Not signed in')
+                            : (user?.email ?? ''),
+                      ),
+                    ),
+                    if (isAnonymous) ...[
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: Icon(
+                          Icons.g_mobiledata,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        title: const Text('Link with Google'),
+                        subtitle: const Text(
+                          'Keep this data, sign in with Google from now on',
+                        ),
+                        onTap: () => _linkGoogle(context, authService),
+                      ),
+                    ],
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.logout, color: AppColors.error),
+                      title: Text(
+                        'Sign out',
+                        style: TextStyle(color: AppColors.error),
+                      ),
+                      subtitle: Text(
+                        isAnonymous
+                            ? 'This will permanently lose access to your data'
+                            : 'You can sign back in with your email & password',
+                      ),
+                      onTap: () =>
+                          _confirmSignOut(context, authService, isAnonymous),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          _SectionLabel('Profile'),
+          Card(
+            child: StreamBuilder<User?>(
+              stream: authService.authStateChanges,
+              builder: (context, snapshot) {
+                final user = snapshot.data;
+                if (user == null) return const SizedBox.shrink();
+                final profileService = ProfileService(user.uid);
+                return StreamBuilder<String>(
+                  stream: profileService.watchName(),
+                  builder: (context, nameSnap) {
+                    final name = nameSnap.data ?? '';
+                    return ListTile(
+                      leading: const Icon(Icons.badge_outlined),
+                      title: const Text('What should we call you?'),
+                      subtitle: Text(
+                        name.isEmpty
+                            ? 'Not set'
+                            : 'We\'ll call you “$name”',
+                      ),
+                      trailing: const Icon(Icons.edit_outlined, size: 20),
+                      onTap: () =>
+                          _promptName(context, profileService, name),
+                    );
+                  },
+                );
+              },
             ),
           ),
           const SizedBox(height: 24),
@@ -55,30 +125,28 @@ class SettingsScreen extends StatelessWidget {
             child: ValueListenableBuilder<ThemeMode>(
               valueListenable: themeNotifier,
               builder: (context, currentMode, _) {
-                return Column(
-                  children: [
-                    RadioListTile<ThemeMode>(
-                      value: ThemeMode.light,
-                      groupValue: currentMode,
-                      title: const Text('Light'),
-                      secondary: const Icon(Icons.light_mode_outlined),
-                      onChanged: (mode) => setThemeMode(mode!),
-                    ),
-                    RadioListTile<ThemeMode>(
-                      value: ThemeMode.dark,
-                      groupValue: currentMode,
-                      title: const Text('Dark'),
-                      secondary: const Icon(Icons.dark_mode_outlined),
-                      onChanged: (mode) => setThemeMode(mode!),
-                    ),
-                    RadioListTile<ThemeMode>(
-                      value: ThemeMode.system,
-                      groupValue: currentMode,
-                      title: const Text('System default'),
-                      secondary: const Icon(Icons.brightness_auto_outlined),
-                      onChanged: (mode) => setThemeMode(mode!),
-                    ),
-                  ],
+                return RadioGroup<ThemeMode>(
+                  groupValue: currentMode,
+                  onChanged: (mode) => setThemeMode(mode!),
+                  child: Column(
+                    children: [
+                      RadioListTile<ThemeMode>(
+                        value: ThemeMode.light,
+                        title: const Text('Light'),
+                        secondary: const Icon(Icons.light_mode_outlined),
+                      ),
+                      RadioListTile<ThemeMode>(
+                        value: ThemeMode.dark,
+                        title: const Text('Dark'),
+                        secondary: const Icon(Icons.dark_mode_outlined),
+                      ),
+                      RadioListTile<ThemeMode>(
+                        value: ThemeMode.system,
+                        title: const Text('System default'),
+                        secondary: const Icon(Icons.brightness_auto_outlined),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),
@@ -185,7 +253,10 @@ class SettingsScreen extends StatelessWidget {
                   subtitle: const Text(
                     'Sets current streak to 0. Best streak is kept.',
                   ),
-                  onTap: () => _confirmResetStreak(context, user?.uid),
+                  onTap: () => _confirmResetStreak(
+                    context,
+                    FirebaseAuth.instance.currentUser?.uid,
+                  ),
                 ),
               ],
             ),
@@ -195,15 +266,23 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmSignOut(BuildContext context, AuthService authService) async {
+  Future<void> _confirmSignOut(
+    BuildContext context,
+    AuthService authService,
+    bool isAnonymous,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Sign out?'),
-        content: const Text(
-          'Your account is anonymous — it isn\'t linked to an email or password. '
-          'Signing out means you will PERMANENTLY lose access to this account and '
-          'all its data (tasks, alarms, streaks). This cannot be undone.',
+        content: Text(
+          isAnonymous
+              ? 'Your account is anonymous — it isn\'t linked to an email or '
+                  'password. Signing out means you will PERMANENTLY lose access '
+                  'to this account and all its data (tasks, alarms, streaks). '
+                  'This cannot be undone.'
+              : 'You can sign back in anytime with your email and password. '
+                  'Your data stays safe in the cloud.',
         ),
         actions: [
           TextButton(
@@ -212,15 +291,153 @@ class SettingsScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Sign out anyway', style: TextStyle(color: AppColors.error)),
+            child: Text(
+              isAnonymous ? 'Sign out anyway' : 'Sign out',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),
     );
 
     if (confirmed == true) {
-      await authService.signOut();
-      // AuthGate listens to authStateChanges and will redirect to login.
+      try {
+        await authService.signOut();
+        // AuthGate listens to authStateChanges and will redirect to login.
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Sign out failed: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  /// Links Google to the current anonymous account, preserving all
+  /// existing data (same Firebase uid).
+  Future<void> _linkGoogle(
+    BuildContext context,
+    AuthService authService,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Link with Google?'),
+        content: const Text(
+          'Your current account is anonymous. Linking your Google account '
+          'keeps all your tasks, alarms, habits and streaks — and lets you '
+          'sign back in on any device with Google.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Link with Google'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !context.mounted) return;
+    try {
+      final linked = await authService.linkAnonymousWithGoogle();
+      if (!context.mounted) return;
+      if (linked) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Account linked with Google.')),
+        );
+      }
+      // linked == false: user cancelled the Google picker — no feedback
+      // needed, nothing changed.
+    } catch (e) {
+      if (!context.mounted) return;
+      final message = _linkErrorMessage(e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
+  /// Turns a linking failure into a clear, actionable message instead of
+  /// a raw exception dump.
+  String _linkErrorMessage(Object e) {
+    if (e is UnsupportedError) {
+      return e.message ?? 'Google linking is not supported on this platform.';
+    }
+    if (e is FirebaseAuthException) {
+      switch (e.code) {
+        case 'account-exists-with-different-credential':
+          return 'This Google account is already linked to another account.';
+        case 'credential-already-in-use':
+          return 'This Google account is already in use.';
+        case 'network-request-failed':
+          return 'Network error — check your connection.';
+        default:
+          return e.message ?? 'Failed to link Google.';
+      }
+    }
+    if (e is GoogleSignInException) {
+      if (e.code == GoogleSignInExceptionCode.clientConfigurationError ||
+          e.code == GoogleSignInExceptionCode.providerConfigurationError) {
+        return 'Google sign-in is not configured yet. Enable the Google '
+            'provider in Firebase and add your app\'s SHA-1 fingerprint.';
+      }
+      return e.description ?? 'Google sign-in failed.';
+    }
+    return 'Failed to link Google: $e';
+  }
+
+  /// Dialog to set (or change) the name the app uses to refer to you.
+  Future<void> _promptName(
+    BuildContext context,
+    ProfileService profileService,
+    String currentName,
+  ) async {
+    final controller = TextEditingController(text: currentName);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('What should we call you?'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 30,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            hintText: 'Your name',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || !context.mounted) return;
+    await profileService.setName(result);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isEmpty
+                ? 'Name cleared.'
+                : 'Got it — we\'ll call you “$result”.',
+          ),
+        ),
+      );
     }
   }
 
