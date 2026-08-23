@@ -27,15 +27,18 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isListening = false;
   bool _ttsEnabled = false;
   bool _speechAvailable = false;
+  bool _speechInitialized = false;
+  bool _ttsInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _initSpeech();
-    _initTts();
+    // Don't block — initialize lazily when needed
   }
 
-  Future<void> _initSpeech() async {
+  Future<void> _ensureSpeechInit() async {
+    if (_speechInitialized) return;
+    _speechInitialized = true;
     _speechAvailable = await _speech.initialize(
       onError: (e) {
         if (mounted && _isListening) {
@@ -52,7 +55,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> _initTts() async {
+  Future<void> _ensureTtsInit() async {
+    if (_ttsInitialized) return;
+    _ttsInitialized = true;
     await _tts.setVolume(1.0);
     await _tts.setSpeechRate(0.5);
     await _tts.setPitch(1.0);
@@ -88,16 +93,14 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
+    await _ensureSpeechInit();
     if (!_speechAvailable) {
-      final initialized = await _speech.initialize();
-      if (!initialized) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Microphone permission denied')),
-          );
-        }
-        return;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission denied')),
+        );
       }
+      return;
     }
 
     setState(() => _isListening = true);
@@ -125,6 +128,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _speak(String text) async {
     if (!_ttsEnabled) return;
+    await _ensureTtsInit();
     // Strip markdown formatting for cleaner speech
     final cleanText = text
         .replaceAll(RegExp(r'```[\s\S]*?```'), 'code block omitted')
