@@ -127,7 +127,37 @@ class AppThemePresets {
     preview: [Color(0xFF482420), Color(0xFFB24D37), Color(0xFFF78358), Color(0xFFFECC64)],
   );
 
-  static const all = [aurora, midnightViolet, purpleEmpire, warmAmber];
+  static const oceanBlue = ThemePalette(
+    key: 'oceanBlue',
+    label: 'Ocean Blue',
+    primary: Color(0xFF1E6091), // Deep Cerulean
+    accent: Color(0xFF40C9A2), // Aquamarine
+    background: Color(0xFFEDF4F8), // Ice Blue
+    surface: Colors.white,
+    surfaceDark: Color(0xFF0D2F4F), // Prussian Blue
+    backgroundDark: Color(0xFF071C31), // Midnight
+    textPrimary: Color(0xFF0D2F4F),
+    textSecondary: Color(0xFF6A90B0),
+    textOnPrimary: Colors.white,
+    preview: [Color(0xFF071C31), Color(0xFF1E6091), Color(0xFF40C9A2), Color(0xFFBEE3F8)],
+  );
+
+  static const forestGreen = ThemePalette(
+    key: 'forestGreen',
+    label: 'Forest Green',
+    primary: Color(0xFF2D6A4F), // Dark Emerald
+    accent: Color(0xFF95D5B2), // Mint
+    background: Color(0xFFEDF5EE), // Mint Cream
+    surface: Colors.white,
+    surfaceDark: Color(0xFF1B4332), // Pine
+    backgroundDark: Color(0xFF0D1F15), // Hunter
+    textPrimary: Color(0xFF1B4332),
+    textSecondary: Color(0xFF6B9080),
+    textOnPrimary: Colors.white,
+    preview: [Color(0xFF0D1F15), Color(0xFF2D6A4F), Color(0xFF95D5B2), Color(0xFFD8F3DC)],
+  );
+
+  static const all = [aurora, midnightViolet, purpleEmpire, warmAmber, oceanBlue, forestGreen];
 
   static ThemePalette byKey(String key) =>
       all.firstWhere((p) => p.key == key, orElse: () => aurora);
