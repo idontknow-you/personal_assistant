@@ -176,7 +176,7 @@ class _ChatScreenState extends State<ChatScreen> {
       } else {
         _messages.add(_ChatMessage(
           role: 'model',
-          text: '⚠️ Could not reach the backend. Make sure it\'s running.',
+          text: '⚠️ Could not reach the AI backend. Check your internet connection or try again in a moment.'
         ));
       }
     });

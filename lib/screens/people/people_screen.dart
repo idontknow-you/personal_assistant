@@ -422,7 +422,7 @@ class _PersonDetailScreenState extends State<_PersonDetailScreen> {
       if (result == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Analysis failed. Is the backend running?')),
+              content: Text('Analysis failed. Check your internet connection and try again.')),
         );
         setState(() => _analyzing = false);
         return;
@@ -447,7 +447,7 @@ class _PersonDetailScreenState extends State<_PersonDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          const SnackBar(content: Text('Something went wrong. Please try again.')),
         );
         setState(() => _analyzing = false);
       }

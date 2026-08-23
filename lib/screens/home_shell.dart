@@ -5,6 +5,7 @@ import 'today/today_screen.dart';
 import 'tasks/task_list_page.dart';
 import 'alarms/alarm_list_screen.dart';
 import 'habits/habit_list_page.dart';
+import 'notes/note_list_page.dart';
 import 'notes/brain_dump_page.dart';
 import 'notes/future_letter_list_page.dart';
 import 'settings/settings_screen.dart';
@@ -29,7 +30,7 @@ import '../services/dsa/dsa_problem_service.dart';
 
 enum _NavTab { today, tasks, brainDump, chat }
 
-enum _DrawerPage { alarms, habits, dsa, letters, people, search, doomScroll, settings }
+enum _DrawerPage { alarms, habits, diary, dsa, letters, people, search, doomScroll, settings }
 
 class HomeShell extends StatefulWidget {
   final String uid;
@@ -230,6 +231,9 @@ class _HomeShellState extends State<HomeShell> {
       case _DrawerPage.habits:
         screen = HabitListPage(habitService: _habitService);
         break;
+      case _DrawerPage.diary:
+        screen = NoteListPage(noteService: _noteService);
+        break;
       case _DrawerPage.letters:
         screen = FutureLetterListPage(letterService: _futureLetterService);
         break;
@@ -356,6 +360,11 @@ class _HomeShellState extends State<HomeShell> {
               leading: const Icon(Icons.local_fire_department),
               title: const Text('Habits'),
               onTap: () => _openDrawerPage(_DrawerPage.habits),
+            ),
+            ListTile(
+              leading: const Icon(Icons.book_outlined),
+              title: const Text('Diary'),
+              onTap: () => _openDrawerPage(_DrawerPage.diary),
             ),
             ListTile(
               leading: const Icon(Icons.school_outlined),

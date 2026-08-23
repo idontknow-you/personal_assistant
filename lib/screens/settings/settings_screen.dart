@@ -637,8 +637,8 @@ class _AppLockSectionState extends State<_AppLockSection> {
             if (_biometricAvailable)
               SwitchListTile(
                 secondary: const Icon(Icons.fingerprint),
-                title: const Text('Biometric unlock'),
-                subtitle: const Text('Use fingerprint or face to unlock'),
+                title: const Text('Fingerprint / Face unlock'),
+                subtitle: const Text('Use biometrics or device PIN to unlock'),
                 value: _biometricEnabled && _enabled,
                 onChanged: _enabled
                     ? (v) async {

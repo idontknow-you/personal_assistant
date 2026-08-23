@@ -63,7 +63,7 @@ class _BrainDumpPageState extends State<BrainDumpPage> {
 
       if (results == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Auto-sort failed. Is the backend running?')),
+          const SnackBar(content: Text('Auto-sort failed. Check your internet connection and try again.')),
         );
         return;
       }
@@ -126,7 +126,7 @@ class _BrainDumpPageState extends State<BrainDumpPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Auto-sort error: $e')),
+          const SnackBar(content: Text('Something went wrong with auto-sort. Please try again.')),
         );
       }
     } finally {
