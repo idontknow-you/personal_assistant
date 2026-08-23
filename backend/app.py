@@ -27,7 +27,9 @@ from routes.semantic_search import semantic_search_bp
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    CORS(app, origins=["*"])  # tighten in production
+    # Mobile apps don't send Origin headers, so CORS is permissive.
+    # Rate limiting (below) handles abuse prevention.
+    CORS(app, origins=["*"])
 
     limiter.init_app(app)
 
