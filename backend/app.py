@@ -16,6 +16,7 @@ import os
 from flask import Flask, jsonify
 from flask_cors import CORS
 from rate_limit import limiter
+from request_logger import init_request_logger
 
 from firebase_auth import init_firebase
 from routes.chat import chat_bp
@@ -32,6 +33,7 @@ def create_app() -> Flask:
     CORS(app, origins=["*"])
 
     limiter.init_app(app)
+    init_request_logger(app)
 
     # Firebase Admin SDK — only needed for token verification
     try:

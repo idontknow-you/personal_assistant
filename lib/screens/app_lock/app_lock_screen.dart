@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/app_lock/app_lock_service.dart';
@@ -24,16 +25,55 @@ class _AppLockScreenState extends State<AppLockScreen> {
   bool _isConfirmStep = false;
   String _firstPin = '';
 
+  // Lockout state
+  int _lockoutSeconds = 0;
+  Timer? _lockoutTimer;
+
   static const int _pinLength = 4;
 
   @override
   void initState() {
     super.initState();
     _isSetupMode = widget.isSetup;
+    _checkLockout();
+  }
+
+  @override
+  void dispose() {
+    _lockoutTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _checkLockout() async {
+    final remaining = await AppLockService.lockoutSecondsRemaining();
+    if (remaining > 0 && mounted) {
+      setState(() => _lockoutSeconds = remaining);
+      _startLockoutTimer();
+    }
+  }
+
+  void _startLockoutTimer() {
+    _lockoutTimer?.cancel();
+    _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _lockoutSeconds--;
+        if (_lockoutSeconds <= 0) {
+          _lockoutSeconds = 0;
+          timer.cancel();
+          _error = '';
+          _entered = '';
+        }
+      });
+    });
   }
 
   void _onKeyPressed(String digit) {
     if (_entered.length >= _pinLength) return;
+    if (_lockoutSeconds > 0) return;
     HapticFeedback.lightImpact();
     setState(() {
       _entered += digit;
@@ -46,7 +86,7 @@ class _AppLockScreenState extends State<AppLockScreen> {
   }
 
   void _onBackspace() {
-    if (_entered.isEmpty) return;
+    if (_entered.isEmpty || _lockoutSeconds > 0) return;
     HapticFeedback.lightImpact();
     setState(() {
       _entered = _entered.substring(0, _entered.length - 1);
@@ -86,10 +126,24 @@ class _AppLockScreenState extends State<AppLockScreen> {
         widget.onUnlocked();
       } else {
         HapticFeedback.heavyImpact();
-        setState(() {
-          _error = 'Wrong PIN';
-          _entered = '';
-        });
+        final remaining = await AppLockService.lockoutSecondsRemaining();
+        if (remaining > 0) {
+          setState(() {
+            _error = 'Too many attempts. Wait ${remaining}s.';
+            _entered = '';
+            _lockoutSeconds = remaining;
+          });
+          _startLockoutTimer();
+        } else {
+          final attempts = await AppLockService.failedAttempts();
+          final left = AppLockService.maxAttempts - attempts;
+          setState(() {
+            _error = left > 0
+                ? 'Wrong PIN ($left attempts left)'
+                : 'Wrong PIN';
+            _entered = '';
+          });
+        }
       }
     }
   }
@@ -101,7 +155,10 @@ class _AppLockScreenState extends State<AppLockScreen> {
 
     String title;
     String subtitle;
-    if (_isSetupMode) {
+    if (_lockoutSeconds > 0) {
+      title = 'Locked Out';
+      subtitle = 'Wait $_lockoutSeconds seconds';
+    } else if (_isSetupMode) {
       if (_isConfirmStep) {
         title = 'Confirm PIN';
         subtitle = 'Re-enter your 4-digit PIN';
@@ -124,9 +181,9 @@ class _AppLockScreenState extends State<AppLockScreen> {
               const Spacer(flex: 2),
 
               Icon(
-                Icons.lock_outline,
+                _lockoutSeconds > 0 ? Icons.lock_clock : Icons.lock_outline,
                 size: 64,
-                color: cs.primary,
+                color: _lockoutSeconds > 0 ? cs.error : cs.primary,
               ),
 
               const SizedBox(height: 24),
@@ -150,7 +207,8 @@ class _AppLockScreenState extends State<AppLockScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(_pinLength, (i) {
                   final filled = i < _entered.length;
-                  return Container(
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
                     width: 16,
                     height: 16,
                     margin: const EdgeInsets.symmetric(horizontal: 8),
@@ -167,7 +225,10 @@ class _AppLockScreenState extends State<AppLockScreen> {
                 const SizedBox(height: 16),
                 Text(
                   _error,
-                  style: TextStyle(color: cs.error, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                    color: cs.error,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
 
@@ -220,7 +281,9 @@ class _AppLockScreenState extends State<AppLockScreen> {
                   width: 72,
                   height: 56,
                   child: FilledButton(
-                    onPressed: () => _onKeyPressed(digit),
+                    onPressed: _lockoutSeconds > 0
+                        ? null
+                        : () => _onKeyPressed(digit),
                     style: FilledButton.styleFrom(
                       backgroundColor: cs.surfaceContainerHighest,
                       foregroundColor: cs.onSurface,
