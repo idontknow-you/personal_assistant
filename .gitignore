@@ -43,3 +43,19 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Freebuff worktree
+.freebuff/
+
+# Backend secrets & deps
+backend/.env
+backend/venv/
+backend/__pycache__/
+
+# Python
+*.pyc
+__pycache__/
+
+# Setup notes
+SETUP.md
+HANDOFF.md
