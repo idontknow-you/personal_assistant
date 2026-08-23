@@ -133,7 +133,7 @@ class _HabitListPageState extends State<HabitListPage> {
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: habits.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
               final habit = habits[i];
               return HabitTile(

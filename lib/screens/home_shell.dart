@@ -318,7 +318,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       );
     }
 
-    final openDrawer = () => _drawerKey.currentState?.openDrawer();
+    void openDrawer() => _drawerKey.currentState?.openDrawer();
 
     final bottomPages = [
       TodayScreen(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../models/dsa/dsa_problem.dart';
 import '../../services/dsa/dsa_problem_service.dart';
 
@@ -179,8 +180,11 @@ class _DueTab extends StatelessWidget {
                         ? IconButton(
                             icon: const Icon(Icons.open_in_new, size: 20),
                             tooltip: 'Open link',
-                            onPressed: () {
-                              // TODO: launch URL
+                            onPressed: () async {
+                              final url = Uri.parse(p.link!);
+                              if (await canLaunchUrl(url)) {
+                                await launchUrl(url, mode: LaunchMode.externalApplication);
+                              }
                             },
                           )
                         : null,
@@ -354,8 +358,11 @@ class _AllProblemsTab extends StatelessWidget {
                     ? IconButton(
                         icon: const Icon(Icons.open_in_new, size: 20),
                         tooltip: 'Open link',
-                        onPressed: () {
-                          // TODO: launch URL
+                        onPressed: () async {
+                          final url = Uri.parse(p.link!);
+                          if (await canLaunchUrl(url)) {
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
+                          }
                         },
                       )
                     : null,

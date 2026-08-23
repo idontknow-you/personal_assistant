@@ -69,48 +69,6 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
     }
   }
 
-  void _showAddTaskSheet() {
-    final controller = TextEditingController();
-    void submit() {
-      final title = controller.text.trim();
-      if (title.isEmpty) return;
-      _taskService.addTask(title);
-      Navigator.pop(context);
-    }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    hintText: 'New task title',
-                  ),
-                  onSubmitted: (_) => submit(),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.send),
-                onPressed: submit,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   void _openTaskForm({Task? existingTask}) {
     Navigator.of(context).push(
       MaterialPageRoute(
