@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../main.dart';
+import '../../services/update/update_service.dart';
+import '../update/update_dialog.dart';
 import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/tags/tag_service.dart';
@@ -250,6 +252,26 @@ class SettingsScreen extends StatelessWidget {
                   leading: Icon(Icons.info_outline),
                   title: Text('Personal OS'),
                   subtitle: Text('v1.0.0'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.system_update),
+                  title: const Text('Check for updates'),
+                  onTap: () async {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Checking for updates...')),
+                    );
+                    final update = await UpdateService.checkForUpdate();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    if (update != null) {
+                      UpdateDialog.show(context, update);
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('You\'re up to date!')),
+                      );
+                    }
+                  },
                 ),
                 const Divider(height: 1),
                 ListTile(

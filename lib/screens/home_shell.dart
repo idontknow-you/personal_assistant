@@ -16,6 +16,8 @@ import 'doom_scroll/doom_scroll_settings_screen.dart';
 import 'doom_scroll/doom_scroll_interrupt_screen.dart';
 import 'app_lock/app_lock_screen.dart';
 import 'search/semantic_search_screen.dart';
+import 'update/update_dialog.dart';
+import '../services/update/update_service.dart';
 import '../services/people/people_service.dart';
 import '../services/doom_scroll/doom_scroll_service.dart';
 import '../services/app_lock/app_lock_service.dart';
@@ -71,6 +73,17 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _dsaService = DSAProblemService(widget.uid);
     WidgetsBinding.instance.addObserver(this);
     _checkAppLock();
+    _checkForUpdate();
+  }
+
+  Future<void> _checkForUpdate() async {
+    // Wait a bit for app to fully load
+    await Future.delayed(const Duration(seconds: 5));
+    if (!mounted) return;
+    final update = await UpdateService.checkForUpdate();
+    if (update != null && mounted) {
+      UpdateDialog.show(context, update);
+    }
   }
 
   @override

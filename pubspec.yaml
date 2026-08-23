@@ -27,6 +27,9 @@ dependencies:
   crypto: ^3.0.3
   speech_to_text: ^7.0.0
   flutter_tts: ^4.2.2
+  open_file: ^3.5.4
+  path_provider: ^2.1.5
+  package_info_plus: ^8.1.3
 
 dependency_overrides:
   flutter_fgbg: 0.6.0
