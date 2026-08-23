@@ -1,17 +1,14 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// App lock using a 4–6 digit PIN + optional biometric.
+/// App lock using a 4-digit PIN.
 /// PIN is stored as a salted SHA-256 hash in SharedPreferences.
 class AppLockService {
   static const _hashKey = 'app_lock_pin_hash';
   static const _saltKey = 'app_lock_pin_salt';
   static const _enabledKey = 'app_lock_enabled';
-  static const _biometricKey = 'app_lock_biometric_enabled';
-  static final _localAuth = LocalAuthentication();
 
   /// Has the user set a PIN?
   static Future<bool> hasPin() async {
@@ -57,45 +54,6 @@ class AppLockService {
   static Future<void> setEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, value);
-  }
-
-  // --- Biometric ---
-
-  /// Can the device do biometric auth (fingerprint/face)?
-  static Future<bool> canUseBiometric() async {
-    try {
-      final canCheck = await _localAuth.canCheckBiometrics;
-      final isSupported = await _localAuth.isDeviceSupported();
-      return canCheck && isSupported;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Is biometric unlock enabled by the user?
-  static Future<bool> isBiometricEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_biometricKey) ?? false;
-  }
-
-  static Future<void> setBiometricEnabled(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_biometricKey, value);
-  }
-
-  /// Prompt biometric auth (fingerprint/face) or device credentials (PIN/pattern).
-  static Future<bool> authenticateWithBiometric() async {
-    try {
-      return await _localAuth.authenticate(
-        localizedReason: 'Verify your identity to unlock the app',
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: false,
-        ),
-      );
-    } catch (_) {
-      return false;
-    }
   }
 
   // --- Internal helpers ---

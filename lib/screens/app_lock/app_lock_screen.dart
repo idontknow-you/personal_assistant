@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/app_lock/app_lock_service.dart';
 
-/// Shown on app launch if PIN is set and enabled.
-/// Modes: verify (unlock) or setup (create/change PIN).
+/// Shown on app launch or when app is backgrounded.
 class AppLockScreen extends StatefulWidget {
   final bool isSetup;
   final VoidCallback onUnlocked;
@@ -24,8 +23,6 @@ class _AppLockScreenState extends State<AppLockScreen> {
   bool _isSetupMode = false;
   bool _isConfirmStep = false;
   String _firstPin = '';
-  bool _biometricAvailable = false;
-  bool _biometricEnabled = false;
 
   static const int _pinLength = 4;
 
@@ -33,29 +30,6 @@ class _AppLockScreenState extends State<AppLockScreen> {
   void initState() {
     super.initState();
     _isSetupMode = widget.isSetup;
-    _checkBiometric();
-  }
-
-  Future<void> _checkBiometric() async {
-    final available = await AppLockService.canUseBiometric();
-    final enabled = await AppLockService.isBiometricEnabled();
-    if (mounted) {
-      setState(() {
-        _biometricAvailable = available;
-        _biometricEnabled = enabled;
-      });
-    }
-    if (available && enabled && !_isSetupMode) {
-      Future.delayed(const Duration(milliseconds: 500), _tryBiometric);
-    }
-  }
-
-  Future<void> _tryBiometric() async {
-    if (!mounted) return;
-    final success = await AppLockService.authenticateWithBiometric();
-    if (success && mounted) {
-      widget.onUnlocked();
-    }
   }
 
   void _onKeyPressed(String digit) {
@@ -203,20 +177,12 @@ class _AppLockScreenState extends State<AppLockScreen> {
 
               const SizedBox(height: 16),
 
-              // Biometric + Backspace row
+              // Backspace
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (_biometricAvailable && _biometricEnabled && !_isSetupMode)
-                      IconButton(
-                        onPressed: _tryBiometric,
-                        icon: const Icon(Icons.fingerprint, size: 32),
-                        tooltip: 'Unlock with biometrics',
-                      )
-                    else
-                      const SizedBox(width: 48),
                     IconButton(
                       onPressed: _onBackspace,
                       icon: const Icon(Icons.backspace_outlined),

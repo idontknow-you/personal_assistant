@@ -521,8 +521,6 @@ class _AppLockSection extends StatefulWidget {
 class _AppLockSectionState extends State<_AppLockSection> {
   bool _hasPin = false;
   bool _enabled = false;
-  bool _biometricAvailable = false;
-  bool _biometricEnabled = false;
   bool _loading = true;
 
   @override
@@ -534,14 +532,10 @@ class _AppLockSectionState extends State<_AppLockSection> {
   Future<void> _load() async {
     final hasPin = await AppLockService.hasPin();
     final enabled = await AppLockService.isEnabled();
-    final biometricAvailable = await AppLockService.canUseBiometric();
-    final biometricEnabled = await AppLockService.isBiometricEnabled();
     if (mounted) {
       setState(() {
         _hasPin = hasPin;
         _enabled = enabled;
-        _biometricAvailable = biometricAvailable;
-        _biometricEnabled = biometricEnabled;
         _loading = false;
       });
     }
@@ -634,19 +628,6 @@ class _AppLockSectionState extends State<_AppLockSection> {
           ),
           if (_hasPin) ...[
             const Divider(height: 1),
-            if (_biometricAvailable)
-              SwitchListTile(
-                secondary: const Icon(Icons.fingerprint),
-                title: const Text('Fingerprint / Face unlock'),
-                subtitle: const Text('Use biometrics or device PIN to unlock'),
-                value: _biometricEnabled && _enabled,
-                onChanged: _enabled
-                    ? (v) async {
-                        await AppLockService.setBiometricEnabled(v);
-                        setState(() => _biometricEnabled = v);
-                      }
-                    : null,
-              ),
             ListTile(
               leading: const Icon(Icons.key),
               title: const Text('Change or remove PIN'),

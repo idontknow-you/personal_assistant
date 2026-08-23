@@ -40,7 +40,7 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   _NavTab _navTab = _NavTab.today;
   final _drawerKey = GlobalKey<ScaffoldState>();
 
@@ -55,6 +55,7 @@ class _HomeShellState extends State<HomeShell> {
   bool _interruptShown = false;
   DateTime? _interruptSnoozedUntil;
   bool _locked = true; // start locked until check completes
+  bool _lockEnabled = false; // cached from _checkAppLock
 
   @override
   void initState() {
@@ -66,11 +67,30 @@ class _HomeShellState extends State<HomeShell> {
     _profileService = ProfileService(widget.uid);
     _tagService = TagService(widget.uid);
     _dsaService = DSAProblemService(widget.uid);
+    WidgetsBinding.instance.addObserver(this);
     _checkAppLock();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Lock immediately when app is backgrounded or phone is locked
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      if (!_locked && _lockEnabled) {
+        setState(() => _locked = true);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _doomScrollTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _checkAppLock() async {
     final locked = await AppLockService.isEnabled();
+    _lockEnabled = locked;
     if (!mounted) return;
     setState(() => _locked = locked);
     if (!locked) {
@@ -126,11 +146,7 @@ class _HomeShellState extends State<HomeShell> {
     } catch (_) {}
   }
 
-  @override
-  void dispose() {
-    _doomScrollTimer?.cancel();
-    super.dispose();
-  }
+
 
   void _checkDueLetters() async {
     try {
