@@ -21,9 +21,12 @@ def init_firebase():
         if creds_path:
             cred = firebase_admin.credentials.Certificate(creds_path)
             firebase_admin.initialize_app(cred)
+            _auth_available = True
+            print("✅ Firebase Admin initialized with service account")
         else:
-            firebase_admin.initialize_app()
-        _auth_available = True
+            # No credentials — can't verify tokens properly
+            print("⚠️  No GOOGLE_APPLICATION_CREDENTIALS — auth will be relaxed")
+            _auth_available = False
     except Exception as e:
         print(f"⚠️  Firebase Admin init failed — auth will be relaxed: {e}")
         _auth_available = False
