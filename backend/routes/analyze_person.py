@@ -2,6 +2,7 @@
 
 from flask import Blueprint, request, g
 from firebase_auth import verify_token
+from rate_limit import limiter
 import gemini_client
 
 analyze_person_bp = Blueprint("analyze_person", __name__, url_prefix="/api")
@@ -38,6 +39,7 @@ Entries to analyze:
 
 
 @analyze_person_bp.route("/analyze-person", methods=["POST"])
+@limiter.limit("10 per minute")
 @verify_token
 def analyze_person():
     """POST /api/analyze-person

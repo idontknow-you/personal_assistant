@@ -15,6 +15,7 @@ Deploy to Render:
 import os
 from flask import Flask, jsonify
 from flask_cors import CORS
+from rate_limit import limiter
 
 from firebase_auth import init_firebase
 from routes.chat import chat_bp
@@ -27,6 +28,8 @@ from routes.semantic_search import semantic_search_bp
 def create_app() -> Flask:
     app = Flask(__name__)
     CORS(app, origins=["*"])  # tighten in production
+
+    limiter.init_app(app)
 
     # Firebase Admin SDK — only needed for token verification
     try:

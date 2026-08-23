@@ -2,12 +2,14 @@
 
 from flask import Blueprint, request, g
 from firebase_auth import verify_token
+from rate_limit import limiter
 import gemini_client
 
 semantic_search_bp = Blueprint("semantic_search", __name__, url_prefix="/api")
 
 
 @semantic_search_bp.route("/semantic-search", methods=["POST"])
+@limiter.limit("10 per minute")
 @verify_token
 def semantic_search():
     """POST /api/semantic-search

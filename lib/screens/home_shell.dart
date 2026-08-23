@@ -56,6 +56,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   DateTime? _interruptSnoozedUntil;
   bool _locked = true; // start locked until check completes
   bool _lockEnabled = false; // cached from _checkAppLock
+  DateTime _lastActivity = DateTime.now();
+  Timer? _inactivityTimer;
 
   @override
   void initState() {
@@ -73,18 +75,32 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Lock immediately when app is backgrounded or phone is locked
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // Lock immediately on background/phone lock
       if (!_locked && _lockEnabled) {
         setState(() => _locked = true);
       }
+    } else if (state == AppLifecycleState.resumed) {
+      _lastActivity = DateTime.now();
+      _checkInactivity();
     }
+  }
+
+  void _checkInactivity() {
+    _inactivityTimer?.cancel();
+    if (!_lockEnabled) return;
+    _inactivityTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!_locked && DateTime.now().difference(_lastActivity).inMinutes >= 5) {
+        setState(() => _locked = true);
+      }
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _doomScrollTimer?.cancel();
+    _inactivityTimer?.cancel();
     super.dispose();
   }
 
@@ -312,7 +328,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     return Scaffold(
       key: _drawerKey,
       drawer: _buildDrawer(context),
-      body: bottomPages[_navTab.index],
+      body: GestureDetector(
+        onTap: () => _lastActivity = DateTime.now(),
+        onPanUpdate: (_) => _lastActivity = DateTime.now(),
+        child: bottomPages[_navTab.index],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navTab.index,
         onDestinationSelected: (i) =>

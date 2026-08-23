@@ -2,12 +2,14 @@
 
 from flask import Blueprint, request, g
 from firebase_auth import verify_token
+from rate_limit import limiter
 import gemini_client
 
 auto_sort_bp = Blueprint("auto_sort", __name__, url_prefix="/api")
 
 
 @auto_sort_bp.route("/auto-sort", methods=["POST"])
+@limiter.limit("10 per minute")
 @verify_token
 def auto_sort():
     """POST /api/auto-sort

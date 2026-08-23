@@ -4,6 +4,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../services/api/api_service.dart';
+import '../../utils/sanitizer.dart';
 
 /// Chat screen with voice input (STT) and voice output (TTS).
 class ChatScreen extends StatefulWidget {
@@ -143,6 +144,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
+    // Sanitize input before sending
+    final cleanText = Sanitizer.sanitize(text);
 
     if (_isListening) {
       await _speech.stop();
@@ -150,7 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     setState(() {
-      _messages.add(_ChatMessage(role: 'user', text: text));
+      _messages.add(_ChatMessage(role: 'user', text: cleanText));
       _loading = true;
     });
     _controller.clear();
@@ -165,7 +168,7 @@ class _ChatScreenState extends State<ChatScreen> {
         .toList();
     if (history.isNotEmpty) history.removeLast();
 
-    final reply = await ApiService.chat(text, history: history);
+    final reply = await ApiService.chat(cleanText, history: history);
 
     if (!mounted) return;
 

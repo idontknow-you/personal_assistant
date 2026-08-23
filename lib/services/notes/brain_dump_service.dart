@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/notes/brain_dump.dart';
+import '../../utils/sanitizer.dart';
 
 class BrainDumpService {
   final String uid;
@@ -24,7 +25,9 @@ class BrainDumpService {
   }
 
   /// Adds a new brain dump entry and returns its Firestore id.
-  Future<String> addEntry(String text) async {
+  Future<String> addEntry(String rawText) async {
+    final text = Sanitizer.sanitize(rawText);
+    if (text.isEmpty) return '';
     final doc = await _ref.add({
       'text': text,
       'createdAt': FieldValue.serverTimestamp(),

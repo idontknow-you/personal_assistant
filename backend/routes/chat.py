@@ -2,12 +2,14 @@
 
 from flask import Blueprint, request, g
 from firebase_auth import verify_token
+from rate_limit import limiter
 import gemini_client
 
 chat_bp = Blueprint("chat", __name__, url_prefix="/api")
 
 
 @chat_bp.route("/chat", methods=["POST"])
+@limiter.limit("10 per minute")
 @verify_token
 def chat():
     """POST /api/chat

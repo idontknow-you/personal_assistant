@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/notes/note.dart';
+import '../../utils/sanitizer.dart';
 
 class NoteService {
   final String uid;
@@ -28,11 +29,14 @@ class NoteService {
     String content = '',
     Mood? mood,
   }) async {
+    final cleanTitle = Sanitizer.sanitizeTitle(title);
+    final cleanContent = Sanitizer.sanitize(content);
+    if (cleanTitle.isEmpty) return '';
     final doc = await _notesRef.add(
       Note(
         id: '',
-        title: title,
-        content: content,
+        title: cleanTitle,
+        content: cleanContent,
         mood: mood,
       ).toMap(),
     );
