@@ -4,8 +4,10 @@ import '../../models/tasks/task.dart';
 import '../../models/notes/future_letter.dart';
 import '../../services/tasks/task_service.dart';
 import '../../services/profile_service.dart';
+import '../../services/notes/note_service.dart';
 import '../../services/notes/future_letter_service.dart';
 import '../../services/alarms/alarm_service.dart';
+import '../../services/api/api_service.dart';
 import '../../utils/date_utils.dart' as my_date_utils;
 
 /// A morning-overview dashboard: greeting, today's tasks, streak, due letters.
@@ -29,12 +31,67 @@ class _TodayScreenState extends State<TodayScreen> {
   late final ProfileService _profileService;
   late final TaskService _taskService;
   late final FutureLetterService _letterService;
+  late final NoteService _noteService;
+  String? _weeklyReview;
+  bool _reviewLoading = false;
+  bool _reviewExpanded = false;
+
   @override
   void initState() {
     super.initState();
     _profileService = ProfileService(widget.uid);
     _taskService = TaskService(widget.uid, alarmService: widget.alarmService);
     _letterService = FutureLetterService(widget.uid);
+    _noteService = NoteService(widget.uid);
+  }
+
+  Future<void> _loadWeeklyReview() async {
+    if (_reviewLoading || _weeklyReview != null) return;
+    setState(() => _reviewLoading = true);
+
+    try {
+      // Gather data for review
+      final tasksSnap = await _taskService.watchTasks().first;
+      final notesSnap = await _noteService.watchNotes().first;
+      final streakSnap = await _taskService.watchStreak().first;
+
+      final tasksData = tasksSnap.map((t) => {
+        'title': t.title,
+        'completed': t.completed,
+        'dueDate': t.dueDate?.toDate().toIso8601String() ?? '',
+      }).toList();
+
+      final notesData = notesSnap.map((n) => {
+        'title': n.title,
+        'mood': n.mood?.name ?? '',
+        'content': n.content.length > 100 ? n.content.substring(0, 100) : n.content,
+        'date': n.createdAt?.toDate().toIso8601String() ?? '',
+      }).toList();
+
+      final streak = streakSnap['currentStreak'] as int? ?? 0;
+
+      final review = await ApiService.getWeeklyReview(
+        tasks: tasksData,
+        habits: [],
+        notes: notesData,
+        streak: streak,
+      );
+
+      if (mounted) {
+        setState(() {
+          _weeklyReview = review ?? 'Could not generate review.';
+          _reviewLoading = false;
+          _reviewExpanded = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _weeklyReview = 'Review unavailable: $e';
+          _reviewLoading = false;
+        });
+      }
+    }
   }
 
   bool _isToday(Task t) {
@@ -50,6 +107,81 @@ class _TodayScreenState extends State<TodayScreen> {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     return due.isBefore(todayStart);
+  }
+
+  Widget _buildWeeklyReviewCard() {
+    final cs = Theme.of(context).colorScheme;
+
+    // Loading state
+    if (_reviewLoading) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Generating your weekly review...',
+                  style: TextStyle(color: cs.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // No review yet — show a prompt to load
+    if (_weeklyReview == null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Card(
+          child: ListTile(
+            leading: Icon(Icons.auto_awesome, color: cs.primary),
+            title: const Text('Weekly Review'),
+            subtitle: const Text('Get an AI summary of your week'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _loadWeeklyReview,
+          ),
+        ),
+      );
+    }
+
+    // Review loaded
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Card(
+        child: ExpansionTile(
+          leading: Icon(Icons.auto_awesome, color: cs.primary),
+          title: const Text('Weekly Review'),
+          initiallyExpanded: _reviewExpanded,
+          onExpansionChanged: (expanded) {
+            setState(() => _reviewExpanded = expanded);
+          },
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Text(
+                _weeklyReview!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      height: 1.5,
+                    ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -234,6 +366,11 @@ class _TodayScreenState extends State<TodayScreen> {
                 );
               },
             ),
+          ),
+
+          // Weekly review card
+          SliverToBoxAdapter(
+            child: _buildWeeklyReviewCard(),
           ),
 
           // Today's task list

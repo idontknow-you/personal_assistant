@@ -20,6 +20,8 @@ from firebase_auth import init_firebase
 from routes.chat import chat_bp
 from routes.auto_sort import auto_sort_bp
 from routes.analyze_person import analyze_person_bp
+from routes.weekly_review import weekly_review_bp
+from routes.semantic_search import semantic_search_bp
 
 
 def create_app() -> Flask:
@@ -36,6 +38,8 @@ def create_app() -> Flask:
     app.register_blueprint(chat_bp)
     app.register_blueprint(auto_sort_bp)
     app.register_blueprint(analyze_person_bp)
+    app.register_blueprint(weekly_review_bp)
+    app.register_blueprint(semantic_search_bp)
 
     # Health check
     @app.route("/api/health")

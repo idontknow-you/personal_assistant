@@ -79,4 +79,38 @@ class ApiService {
     if (result == null) return null;
     return result.map((k, v) => MapEntry(k, v?.toString() ?? ''));
   }
+
+  /// Get weekly review summary from Gemini.
+  static Future<String?> getWeeklyReview({
+    required List<Map<String, dynamic>> tasks,
+    required List<Map<String, dynamic>> habits,
+    required List<Map<String, dynamic>> notes,
+    required int streak,
+  }) async {
+    final result = await _post('/api/weekly-review', {
+      'tasks': tasks,
+      'habits': habits,
+      'notes': notes,
+      'streak': streak,
+      'period': 'last 7 days',
+    });
+    return result?['review'] as String?;
+  }
+
+  /// Semantic search across user's entries.
+  static Future<List<Map<String, dynamic>>?> semanticSearch(
+    String query, {
+    required List<Map<String, dynamic>> entries,
+  }) async {
+    final result = await _post('/api/semantic-search', {
+      'query': query,
+      'entries': entries,
+    });
+    if (result == null) return null;
+    final results = result['results'];
+    if (results is List) {
+      return results.cast<Map<String, dynamic>>();
+    }
+    return null;
+  }
 }

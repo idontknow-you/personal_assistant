@@ -15,6 +15,7 @@ import 'people/people_screen.dart';
 import 'doom_scroll/doom_scroll_settings_screen.dart';
 import 'doom_scroll/doom_scroll_interrupt_screen.dart';
 import 'app_lock/app_lock_screen.dart';
+import 'search/semantic_search_screen.dart';
 import '../services/people/people_service.dart';
 import '../services/doom_scroll/doom_scroll_service.dart';
 import '../services/app_lock/app_lock_service.dart';
@@ -29,7 +30,7 @@ import '../services/dsa/dsa_problem_service.dart';
 
 enum _NavTab { today, tasks, diary, brainDump }
 
-enum _DrawerPage { alarms, habits, dsa, letters, chat, people, doomScroll, settings }
+enum _DrawerPage { alarms, habits, dsa, letters, chat, people, search, doomScroll, settings }
 
 class HomeShell extends StatefulWidget {
   final String uid;
@@ -242,6 +243,13 @@ class _HomeShellState extends State<HomeShell> {
       case _DrawerPage.people:
         screen = PeopleScreen(peopleService: PeopleService(widget.uid));
         break;
+      case _DrawerPage.search:
+        screen = SemanticSearchScreen(
+          uid: widget.uid,
+          noteService: _noteService,
+          brainDumpService: _brainDumpService,
+        );
+        break;
       case _DrawerPage.doomScroll:
         screen = const DoomScrollSettingsScreen();
         break;
@@ -363,6 +371,11 @@ class _HomeShellState extends State<HomeShell> {
               leading: const Icon(Icons.people_outline),
               title: const Text('People'),
               onTap: () => _openDrawerPage(_DrawerPage.people),
+            ),
+            ListTile(
+              leading: const Icon(Icons.search),
+              title: const Text('Search'),
+              onTap: () => _openDrawerPage(_DrawerPage.search),
             ),
             ListTile(
               leading: const Icon(Icons.screen_lock_portrait),
