@@ -4,14 +4,13 @@ import '../../models/notes/note.dart';
 import '../../services/notes/note_service.dart';
 import 'note_form_screen.dart';
 
+/// Diary notes page — now notes only (brain dump lives in its own tab).
 class NoteListPage extends StatefulWidget {
   final NoteService noteService;
-  final String uid;
 
   const NoteListPage({
     super.key,
     required this.noteService,
-    required this.uid,
   });
 
   @override

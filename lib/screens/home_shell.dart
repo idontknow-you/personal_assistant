@@ -1,13 +1,35 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'today/today_screen.dart';
 import 'tasks/task_list_page.dart';
 import 'alarms/alarm_list_screen.dart';
 import 'habits/habit_list_page.dart';
 import 'notes/note_list_page.dart';
+import 'notes/brain_dump_page.dart';
+import 'notes/future_letter_list_page.dart';
+import 'settings/settings_screen.dart';
+import 'dsa/dsa_screen.dart';
+import 'chat/chat_screen.dart';
+import 'people/people_screen.dart';
+import 'doom_scroll/doom_scroll_settings_screen.dart';
+import 'doom_scroll/doom_scroll_interrupt_screen.dart';
+import 'app_lock/app_lock_screen.dart';
+import '../services/people/people_service.dart';
+import '../services/doom_scroll/doom_scroll_service.dart';
+import '../services/app_lock/app_lock_service.dart';
 import '../main.dart' show alarmService;
 import '../services/habits/habit_service.dart';
 import '../services/notes/note_service.dart';
+import '../services/notes/future_letter_service.dart';
+import '../services/notes/brain_dump_service.dart';
 import '../services/profile_service.dart';
+import '../services/tags/tag_service.dart';
+import '../services/dsa/dsa_problem_service.dart';
+
+enum _NavTab { today, tasks, diary, brainDump }
+
+enum _DrawerPage { alarms, habits, dsa, letters, chat, people, doomScroll, settings }
 
 class HomeShell extends StatefulWidget {
   final String uid;
@@ -18,24 +40,122 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _index = 0;
+  _NavTab _navTab = _NavTab.today;
+  final _drawerKey = GlobalKey<ScaffoldState>();
+
   late final HabitService _habitService;
   late final NoteService _noteService;
+  late final FutureLetterService _futureLetterService;
+  late final BrainDumpService _brainDumpService;
   late final ProfileService _profileService;
+  late final TagService _tagService;
+  late final DSAProblemService _dsaService;
   bool _namePrompted = false;
+  bool _interruptShown = false;
+  DateTime? _interruptSnoozedUntil;
+  bool _locked = true; // start locked until check completes
 
   @override
   void initState() {
     super.initState();
     _habitService = HabitService(widget.uid);
     _noteService = NoteService(widget.uid);
+    _futureLetterService = FutureLetterService(widget.uid);
+    _brainDumpService = BrainDumpService(widget.uid);
     _profileService = ProfileService(widget.uid);
-    _promptNameIfNeeded();
+    _tagService = TagService(widget.uid);
+    _dsaService = DSAProblemService(widget.uid);
+    _checkAppLock();
   }
 
-  /// Shows the "What should we call you?" dialog on first launch if the
-  /// user hasn't set a name yet. Uses [_namePrompted] so it only fires
-  /// once per session (not on every rebuild / hot reload).
+  Future<void> _checkAppLock() async {
+    final locked = await AppLockService.isEnabled();
+    if (!mounted) return;
+    setState(() => _locked = locked);
+    if (!locked) {
+      _onUnlocked(); // no lock — proceed with normal init
+    }
+  }
+
+  void _onUnlocked() {
+    // Only run once
+    if (!_locked && _namePrompted) return;
+    _locked = false;
+    _promptNameIfNeeded();
+    _checkDueLetters();
+    _startDoomScrollMonitor();
+  }
+
+  Timer? _doomScrollTimer;
+
+  void _startDoomScrollMonitor() {
+    Future.delayed(const Duration(seconds: 10), _checkDoomScrollLimits);
+    _doomScrollTimer = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => _checkDoomScrollLimits(),
+    );
+  }
+
+  Future<void> _checkDoomScrollLimits() async {
+    if (!mounted || _interruptShown) return;
+    if (_interruptSnoozedUntil != null &&
+        DateTime.now().isBefore(_interruptSnoozedUntil!)) {
+      return;
+    }
+
+    try {
+      final exceeded = await DoomScrollService.checkLimits();
+      if (exceeded.isNotEmpty && mounted) {
+        _interruptShown = true;
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => DoomScrollInterruptScreen(
+              uid: widget.uid,
+              exceededApps: exceeded,
+              onDismiss: () {
+                _interruptShown = false;
+                _interruptSnoozedUntil =
+                    DateTime.now().add(const Duration(minutes: 15));
+              },
+            ),
+          ),
+        );
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _doomScrollTimer?.cancel();
+    super.dispose();
+  }
+
+  void _checkDueLetters() async {
+    try {
+      final dueLetters = await _futureLetterService.getDueLetters();
+      if (dueLetters.isNotEmpty && mounted) {
+        await Future.delayed(const Duration(milliseconds: 1200));
+        if (!mounted) return;
+        final count = dueLetters.length;
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '$count future letter${count == 1 ? '' : 's'} ${count == 1 ? 'is' : 'are'} ready to open.',
+              ),
+              action: SnackBarAction(
+                label: 'View',
+                onPressed: () => _openDrawerPage(_DrawerPage.letters),
+              ),
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        }
+      }
+    } catch (_) {}
+  }
+
   void _promptNameIfNeeded() async {
     if (_namePrompted) return;
     _namePrompted = true;
@@ -50,7 +170,6 @@ class _HomeShellState extends State<HomeShell> {
       final name = (doc.data()?['name'] as String?) ?? '';
       if (name.isNotEmpty || !mounted) return;
 
-      // Small delay so the UI has time to build first.
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
 
@@ -92,38 +211,174 @@ class _HomeShellState extends State<HomeShell> {
               content: Text(
                 result.isEmpty
                     ? 'Name cleared.'
-                    : 'Got it — we\'ll call you "$result".',
+                    : "Got it — we'll call you \"$result\".",
               ),
             ),
           );
         }
       }
-    } catch (_) {
-      // Don't crash on profile check failure — the user can always
-      // set their name later from Settings.
+    } catch (_) {}
+  }
+
+  void _openDrawerPage(_DrawerPage page) {
+    Navigator.pop(context); // close drawer
+    Widget screen;
+    switch (page) {
+      case _DrawerPage.alarms:
+        screen = AlarmListScreen(alarmService: alarmService);
+        break;
+      case _DrawerPage.habits:
+        screen = HabitListPage(habitService: _habitService);
+        break;
+      case _DrawerPage.letters:
+        screen = FutureLetterListPage(letterService: _futureLetterService);
+        break;
+      case _DrawerPage.dsa:
+        screen = DSAScreen(problemService: _dsaService);
+        break;
+      case _DrawerPage.chat:
+        screen = const ChatScreen();
+        break;
+      case _DrawerPage.people:
+        screen = PeopleScreen(peopleService: PeopleService(widget.uid));
+        break;
+      case _DrawerPage.doomScroll:
+        screen = const DoomScrollSettingsScreen();
+        break;
+      case _DrawerPage.settings:
+        screen = SettingsScreen(tagService: _tagService);
+        break;
     }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
+    // Show lock screen if app lock is enabled
+    if (_locked) {
+      return AppLockScreen(
+        isSetup: false,
+        onUnlocked: () {
+          setState(() => _locked = false);
+          _onUnlocked();
+        },
+      );
+    }
+
+    final bottomPages = [
+      TodayScreen(
+        uid: widget.uid,
+        alarmService: alarmService,
+        onMenuPressed: () => _drawerKey.currentState?.openDrawer(),
+      ),
       TaskListPage(uid: widget.uid, alarmService: alarmService),
-      AlarmListScreen(alarmService: alarmService),
-      HabitListPage(habitService: _habitService),
-      NoteListPage(noteService: _noteService, uid: widget.uid),
+      NoteListPage(noteService: _noteService),
+      BrainDumpPage(brainDumpService: _brainDumpService),
     ];
 
     return Scaffold(
-      body: pages[_index],
+      key: _drawerKey,
+      drawer: _buildDrawer(context),
+      body: bottomPages[_navTab.index],
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
+        selectedIndex: _navTab.index,
+        onDestinationSelected: (i) =>
+            setState(() => _navTab = _NavTab.values[i]),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.checklist), label: 'Tasks'),
-          NavigationDestination(icon: Icon(Icons.alarm), label: 'Alarms'),
-          NavigationDestination(icon: Icon(Icons.local_fire_department), label: 'Habits'),
-          NavigationDestination(icon: Icon(Icons.book_outlined), label: 'Diary'),
+          NavigationDestination(
+              icon: Icon(Icons.wb_sunny_outlined), label: 'Today'),
+          NavigationDestination(
+              icon: Icon(Icons.checklist), label: 'Tasks'),
+          NavigationDestination(
+              icon: Icon(Icons.book_outlined), label: 'Diary'),
+          NavigationDestination(
+              icon: Icon(Icons.psychology_outlined), label: 'Dump'),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Drawer(
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+              child: StreamBuilder<String>(
+                stream: _profileService.watchName(),
+                builder: (context, snapshot) {
+                  final name = snapshot.data ?? '';
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name.isNotEmpty ? name : 'Personal OS',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        name.isNotEmpty ? 'Personal OS' : 'Your assistant',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.alarm),
+              title: const Text('Alarms'),
+              onTap: () => _openDrawerPage(_DrawerPage.alarms),
+            ),
+            ListTile(
+              leading: const Icon(Icons.local_fire_department),
+              title: const Text('Habits'),
+              onTap: () => _openDrawerPage(_DrawerPage.habits),
+            ),
+            ListTile(
+              leading: const Icon(Icons.school_outlined),
+              title: const Text('DSA Spaced Repetition'),
+              onTap: () => _openDrawerPage(_DrawerPage.dsa),
+            ),
+            ListTile(
+              leading: const Icon(Icons.mail_outline),
+              title: const Text('Letters to Future Me'),
+              onTap: () => _openDrawerPage(_DrawerPage.letters),
+            ),
+            ListTile(
+              leading: const Icon(Icons.chat_bubble_outline),
+              title: const Text('Chat'),
+              onTap: () => _openDrawerPage(_DrawerPage.chat),
+            ),
+            ListTile(
+              leading: const Icon(Icons.people_outline),
+              title: const Text('People'),
+              onTap: () => _openDrawerPage(_DrawerPage.people),
+            ),
+            ListTile(
+              leading: const Icon(Icons.screen_lock_portrait),
+              title: const Text('Anti-Doom-Scroll'),
+              onTap: () => _openDrawerPage(_DrawerPage.doomScroll),
+            ),
+            const Spacer(),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Settings'),
+              onTap: () => _openDrawerPage(_DrawerPage.settings),
+            ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom),
+          ],
+        ),
       ),
     );
   }

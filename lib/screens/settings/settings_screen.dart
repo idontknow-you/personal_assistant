@@ -7,8 +7,10 @@ import '../../main.dart';
 import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/tags/tag_service.dart';
+import '../../services/app_lock/app_lock_service.dart';
 import '../../theme/app_theme.dart';
 import '../tags/tag_management_screen.dart';
+import '../app_lock/app_lock_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key, required this.tagService});
@@ -234,6 +236,10 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 24),
+
+          _SectionLabel('Security'),
+          _AppLockSection(),
           const SizedBox(height: 24),
 
           _SectionLabel('About & Data'),
@@ -502,6 +508,152 @@ class _SectionLabel extends StatelessWidget {
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
             ),
+      ),
+    );
+  }
+}
+
+class _AppLockSection extends StatefulWidget {
+  @override
+  State<_AppLockSection> createState() => _AppLockSectionState();
+}
+
+class _AppLockSectionState extends State<_AppLockSection> {
+  bool _hasPin = false;
+  bool _enabled = false;
+  bool _biometricAvailable = false;
+  bool _biometricEnabled = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final hasPin = await AppLockService.hasPin();
+    final enabled = await AppLockService.isEnabled();
+    final biometricAvailable = await AppLockService.canUseBiometric();
+    final biometricEnabled = await AppLockService.isBiometricEnabled();
+    if (mounted) {
+      setState(() {
+        _hasPin = hasPin;
+        _enabled = enabled;
+        _biometricAvailable = biometricAvailable;
+        _biometricEnabled = biometricEnabled;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _toggle(bool value) async {
+    if (value && !_hasPin) {
+      // Need to set PIN first
+      final navigator = Navigator.of(context);
+      await navigator.push(MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => AppLockScreen(
+          isSetup: true,
+          onUnlocked: () {
+            navigator.pop();
+            _load();
+          },
+        ),
+      ));
+      return;
+    }
+    await AppLockService.setEnabled(value);
+    setState(() => _enabled = value);
+  }
+
+  Future<void> _changeOrRemovePin() async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('App Lock'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'change'),
+            child: const Text('Change PIN'),
+          ),
+          if (_hasPin)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, 'remove'),
+              child: Text('Remove PIN',
+                style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    if (action == 'change') {
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      await navigator.push(MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => AppLockScreen(
+          isSetup: true,
+          onUnlocked: () {
+            navigator.pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('PIN changed.')),
+            );
+          },
+        ),
+      ));
+    } else if (action == 'remove') {
+      await AppLockService.removePin();
+      setState(() { _hasPin = false; _enabled = false; });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('App lock removed.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const SizedBox.shrink();
+
+    return Card(
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: const Icon(Icons.lock_outline),
+            title: const Text('App Lock'),
+            subtitle: Text(
+              _hasPin
+                  ? (_enabled ? 'Enabled — PIN required on launch' : 'PIN set but disabled')
+                  : 'No PIN set',
+            ),
+            value: _enabled,
+            onChanged: _toggle,
+          ),
+          if (_hasPin) ...[
+            const Divider(height: 1),
+            if (_biometricAvailable)
+              SwitchListTile(
+                secondary: const Icon(Icons.fingerprint),
+                title: const Text('Biometric unlock'),
+                subtitle: const Text('Use fingerprint or face to unlock'),
+                value: _biometricEnabled && _enabled,
+                onChanged: _enabled
+                    ? (v) async {
+                        await AppLockService.setBiometricEnabled(v);
+                        setState(() => _biometricEnabled = v);
+                      }
+                    : null,
+              ),
+            ListTile(
+              leading: const Icon(Icons.key),
+              title: const Text('Change or remove PIN'),
+              onTap: _changeOrRemovePin,
+            ),
+          ],
+        ],
       ),
     );
   }

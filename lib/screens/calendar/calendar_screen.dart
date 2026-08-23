@@ -7,15 +7,10 @@ import '../../services/habits/habit_service.dart';
 import '../../services/tags/tag_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/tasks/day_agenda_tile.dart';
+import '../../widgets/calendar/month_grid.dart';
+import '../../widgets/calendar/calendar_widgets.dart';
 
-/// Month grid + day agenda view over BOTH tasks and habits. Repeating
-/// tasks and habits are projected forward/backward as "virtual"
-/// occurrences for display purposes only — this screen never writes a new
-/// doc per occurrence, it just figures out which days a task/habit's
-/// single persistent doc counts as "due" on and looks up (or writes, via
-/// TaskService.setCompletionForDate / HabitService.cycleStatus) that
-/// day's entry in the relevant log.
-///
+/// Month grid + day agenda view over BOTH tasks and habits.
 /// Day agenda is always Tasks first, then Habits below, per section
 /// headers — never interleaved.
 class CalendarScreen extends StatefulWidget {
@@ -324,8 +319,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ],
                     ),
                   ),
-                  _WeekdayHeader(theme: theme),
-                  _MonthGrid(
+                  WeekdayHeader(theme: theme),
+                  MonthGrid(
                     visibleMonth: _visibleMonth,
                     selectedDay: _selectedDay,
                     byDayTasks: byDayTasks,
@@ -363,7 +358,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         : ListView(
                             children: [
                               if (selectedTasks.isNotEmpty) ...[
-                                _SectionHeader(
+                                SectionHeader(
                                   label: 'Tasks',
                                   theme: theme,
                                 ),
@@ -388,14 +383,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 }),
                               ],
                               if (selectedHabits.isNotEmpty) ...[
-                                _SectionHeader(
+                                SectionHeader(
                                   label: 'Habits',
                                   theme: theme,
                                 ),
                                 ...selectedHabits.map((habit) {
                                   final status = _habitStatusOn(habit, _selectedDay);
                                   final isFuture = _selectedDay.isAfter(today);
-                                  return _HabitAgendaTile(
+                                  return HabitAgendaTile(
                                     habit: habit,
                                     status: status,
                                     statusColor: _habitStatusColor(status),
@@ -419,288 +414,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
           );
         },
       ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.label, required this.theme});
-  final String label;
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Text(
-        label,
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _HabitAgendaTile extends StatelessWidget {
-  const _HabitAgendaTile({
-    required this.habit,
-    required this.status,
-    required this.statusColor,
-    required this.onTap,
-  });
-
-  final Habit habit;
-  final HabitDayStatus? status;
-  final Color statusColor;
-
-  /// Null for future days — you can't mark a habit done/skipped/missed for
-  /// a day that hasn't happened yet.
-  final VoidCallback? onTap;
-
-  String _statusLabel() {
-    if (onTap == null) return 'Not due yet';
-    switch (status) {
-      case HabitDayStatus.done:
-        return 'Done';
-      case HabitDayStatus.skipped:
-        return 'Skipped';
-      case HabitDayStatus.missed:
-        return 'Missed';
-      case null:
-        return 'Not marked — tap to cycle';
-    }
-  }
-
-  IconData? _statusIcon() {
-    switch (status) {
-      case HabitDayStatus.done:
-        return Icons.check;
-      case HabitDayStatus.missed:
-        return Icons.close;
-      case HabitDayStatus.skipped:
-      case null:
-        return null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final icon = _statusIcon();
-    final isFuture = onTap == null;
-    return ListTile(
-      onTap: onTap,
-      leading: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: isFuture ? statusColor.withValues(alpha: 0.3) : statusColor,
-        ),
-        child: icon != null
-            ? Icon(icon, size: 16, color: Colors.white)
-            : null,
-      ),
-      title: Text(
-        habit.name,
-        style: isFuture
-            ? TextStyle(color: theme.colorScheme.onSurfaceVariant)
-            : null,
-      ),
-      subtitle: Text(_statusLabel()),
-      trailing: habit.currentStreak > 0
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.local_fire_department,
-                    size: 16, color: AppColors.warning),
-                const SizedBox(width: 2),
-                Text('${habit.currentStreak}', style: theme.textTheme.bodySmall),
-              ],
-            )
-          : null,
-    );
-  }
-}
-
-class _WeekdayHeader extends StatelessWidget {
-  const _WeekdayHeader({required this.theme});
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        children: labels
-            .map((l) => Expanded(
-                  child: Center(
-                    child: Text(
-                      l,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ),
-                ))
-            .toList(),
-      ),
-    );
-  }
-}
-
-class _MonthGrid extends StatelessWidget {
-  const _MonthGrid({
-    required this.visibleMonth,
-    required this.selectedDay,
-    required this.byDayTasks,
-    required this.byDayHabits,
-    required this.taskStatusOn,
-    required this.habitStatusOn,
-    required this.priorityColor,
-    required this.habitStatusColor,
-    required this.onSelectDay,
-  });
-
-  final DateTime visibleMonth;
-  final DateTime selectedDay;
-  final Map<String, List<Task>> byDayTasks;
-  final Map<String, List<Habit>> byDayHabits;
-  final bool? Function(Task, DateTime) taskStatusOn;
-  final HabitDayStatus? Function(Habit, DateTime) habitStatusOn;
-  final Color Function(Priority) priorityColor;
-  final Color Function(HabitDayStatus?) habitStatusColor;
-  final void Function(DateTime) onSelectDay;
-
-  String _key(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    final firstOfMonth = DateTime(visibleMonth.year, visibleMonth.month, 1);
-    final daysInMonth = DateTime(visibleMonth.year, visibleMonth.month + 1, 0).day;
-    // firstOfMonth.weekday: 1=Mon..7=Sun. Grid starts on Monday.
-    final leadingBlanks = firstOfMonth.weekday - 1;
-    final totalCells = leadingBlanks + daysInMonth;
-    final rows = (totalCells / 7).ceil();
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 7,
-        childAspectRatio: 1,
-        mainAxisSpacing: 2,
-        crossAxisSpacing: 2,
-      ),
-      itemCount: rows * 7,
-      itemBuilder: (context, index) {
-        final dayNum = index - leadingBlanks + 1;
-        if (dayNum < 1 || dayNum > daysInMonth) {
-          return const SizedBox.shrink();
-        }
-        final day = DateTime(visibleMonth.year, visibleMonth.month, dayNum);
-        final tasksToday = byDayTasks[_key(day)] ?? [];
-        final habitsToday = byDayHabits[_key(day)] ?? [];
-        final isToday = day.year == today.year &&
-            day.month == today.month &&
-            day.day == today.day;
-        final isSelected = day.year == selectedDay.year &&
-            day.month == selectedDay.month &&
-            day.day == selectedDay.day;
-        final isPast = day.isBefore(today);
-
-        final allTasksDone = tasksToday.isNotEmpty &&
-            tasksToday.every((t) => taskStatusOn(t, day) ?? false);
-        final hasMissedTask = isPast &&
-            tasksToday.isNotEmpty &&
-            tasksToday.any((t) => !(taskStatusOn(t, day) ?? false));
-
-        Color? bg;
-        if (isSelected) {
-          bg = theme.colorScheme.primary;
-        } else if (allTasksDone && tasksToday.isNotEmpty) {
-          bg = theme.colorScheme.primaryContainer;
-        } else if (hasMissedTask) {
-          bg = theme.colorScheme.errorContainer.withValues(alpha: 0.5);
-        }
-
-        final textColor =
-            isSelected ? theme.colorScheme.onPrimary : theme.colorScheme.onSurface;
-
-        // Combined indicator row: task dots (circles, priority color) get
-        // first claim on the 3 available slots, habit dots (small squares,
-        // status color) fill any remaining slots. This keeps the cell from
-        // needing a second row, which doesn't fit the fixed circular cell.
-        final indicators = <Widget>[];
-        for (final t in tasksToday.take(3)) {
-          indicators.add(Container(
-            width: 4,
-            height: 4,
-            margin: const EdgeInsets.symmetric(horizontal: 1),
-            decoration: BoxDecoration(
-              color: isSelected ? theme.colorScheme.onPrimary : priorityColor(t.priority),
-              shape: BoxShape.circle,
-            ),
-          ));
-        }
-        final remainingSlots = 3 - indicators.length;
-        if (remainingSlots > 0) {
-          for (final h in habitsToday.take(remainingSlots)) {
-            indicators.add(Container(
-              width: 4,
-              height: 4,
-              margin: const EdgeInsets.symmetric(horizontal: 1),
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? theme.colorScheme.onPrimary
-                    : habitStatusColor(habitStatusOn(h, day)),
-                shape: BoxShape.rectangle,
-              ),
-            ));
-          }
-        }
-
-        return GestureDetector(
-          onTap: () => onSelectDay(day),
-          child: Container(
-            margin: const EdgeInsets.all(1),
-            decoration: BoxDecoration(
-              color: bg,
-              shape: BoxShape.circle,
-              border: isToday && !isSelected
-                  ? Border.all(color: theme.colorScheme.primary, width: 1.5)
-                  : null,
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '$dayNum',
-                  style: theme.textTheme.bodyMedium?.copyWith(color: textColor),
-                ),
-                if (indicators.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: indicators,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }

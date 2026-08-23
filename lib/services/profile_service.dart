@@ -23,6 +23,16 @@ class ProfileService {
         );
   }
 
+  /// One-shot read of the stored name. Returns '' on error or if unset.
+  Future<String> getName() async {
+    try {
+      final doc = await _profileDoc.get();
+      return ((doc.data()?['name'] as String?) ?? '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// Saves the preferred name. Empty input effectively clears it.
   Future<void> setName(String name) async {
     await _profileDoc.set(

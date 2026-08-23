@@ -4,6 +4,8 @@ import '../../services/tasks/task_service.dart';
 import '../../services/alarms/alarm_service.dart';
 import '../../services/habits/habit_service.dart';
 import '../../services/tags/tag_service.dart';
+import '../../services/profile_service.dart';
+import '../../utils/date_utils.dart' as my_date_utils;
 
 import '../../widgets/tasks/task_tile.dart';
 import '../../widgets/tasks/completion_history_sheet.dart';
@@ -28,6 +30,7 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
   late final TaskService _taskService;
   late final HabitService _habitService;
   late final TagService _tagService;
+  late final ProfileService _profileService;
   TaskFilter _filter = TaskFilter.all;
 
   @override
@@ -37,6 +40,7 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
     _taskService = TaskService(widget.uid, alarmService: widget.alarmService);
     _habitService = HabitService(widget.uid);
     _tagService = TagService(widget.uid);
+    _profileService = ProfileService(widget.uid);
     _taskService.runDailyRollover();
   }
 
@@ -352,8 +356,21 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
                 final tasks = _applyFilter(allTasks);
 
                 if (allTasks.isEmpty) {
-                  return const Center(
-                    child: Text('No tasks yet. Tap + to add one.'),
+                  return Center(
+                    child: StreamBuilder<String>(
+                      stream: _profileService.watchName(),
+                      builder: (context, nameSnap) {
+                        final name = nameSnap.data ?? '';
+                        final greeting = name.isNotEmpty
+                            ? '${my_date_utils.greetingForName(name)} — '
+                            : '';
+                        return Text(
+                          '${greeting}No tasks yet. Tap + to add one.',
+                          style: Theme.of(context).textTheme.bodyLarge,
+                          textAlign: TextAlign.center,
+                        );
+                      },
+                    ),
                   );
                 }
                 if (tasks.isEmpty) {
