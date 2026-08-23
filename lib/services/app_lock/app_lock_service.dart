@@ -83,14 +83,14 @@ class AppLockService {
     await prefs.setBool(_biometricKey, value);
   }
 
-  /// Prompt biometric auth (fingerprint/face).
+  /// Prompt biometric auth (fingerprint/face) or device credentials (PIN/pattern).
   static Future<bool> authenticateWithBiometric() async {
     try {
       return await _localAuth.authenticate(
         localizedReason: 'Verify your identity to unlock the app',
         options: const AuthenticationOptions(
           stickyAuth: true,
-          biometricOnly: true,
+          biometricOnly: false,
         ),
       );
     } catch (_) {

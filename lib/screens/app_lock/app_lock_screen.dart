@@ -5,10 +5,7 @@ import '../../services/app_lock/app_lock_service.dart';
 /// Shown on app launch if PIN is set and enabled.
 /// Modes: verify (unlock) or setup (create/change PIN).
 class AppLockScreen extends StatefulWidget {
-  /// If true, user is setting a new PIN for the first time.
   final bool isSetup;
-
-  /// Called when the user successfully unlocks or sets their PIN.
   final VoidCallback onUnlocked;
 
   const AppLockScreen({
@@ -25,10 +22,12 @@ class _AppLockScreenState extends State<AppLockScreen> {
   String _entered = '';
   String _error = '';
   bool _isSetupMode = false;
-  bool _isConfirmStep = false; // for setup: confirm PIN step
-  String _firstPin = ''; // for setup: first entry
+  bool _isConfirmStep = false;
+  String _firstPin = '';
   bool _biometricAvailable = false;
   bool _biometricEnabled = false;
+
+  static const int _pinLength = 4;
 
   @override
   void initState() {
@@ -46,13 +45,13 @@ class _AppLockScreenState extends State<AppLockScreen> {
         _biometricEnabled = enabled;
       });
     }
-    // Auto-prompt biometric on launch if enabled and in verify mode
     if (available && enabled && !_isSetupMode) {
       Future.delayed(const Duration(milliseconds: 500), _tryBiometric);
     }
   }
 
   Future<void> _tryBiometric() async {
+    if (!mounted) return;
     final success = await AppLockService.authenticateWithBiometric();
     if (success && mounted) {
       widget.onUnlocked();
@@ -60,16 +59,14 @@ class _AppLockScreenState extends State<AppLockScreen> {
   }
 
   void _onKeyPressed(String digit) {
-    if (_entered.length >= 6) return;
+    if (_entered.length >= _pinLength) return;
     HapticFeedback.lightImpact();
     setState(() {
       _entered += digit;
       _error = '';
     });
 
-    // Auto-submit at 4 digits (minimum) — or 6 if user entered 6
-    if (_entered.length >= 4) {
-      // Small delay so user sees the last dot
+    if (_entered.length == _pinLength) {
       Future.delayed(const Duration(milliseconds: 150), _submit);
     }
   }
@@ -85,17 +82,10 @@ class _AppLockScreenState extends State<AppLockScreen> {
 
   Future<void> _submit() async {
     final pin = _entered;
+    if (pin.length != _pinLength) return;
 
     if (_isSetupMode) {
       if (!_isConfirmStep) {
-        // First entry — save and ask for confirmation
-        if (pin.length < 4) {
-          setState(() {
-            _error = 'PIN must be at least 4 digits';
-            _entered = '';
-          });
-          return;
-        }
         setState(() {
           _firstPin = pin;
           _isConfirmStep = true;
@@ -103,11 +93,11 @@ class _AppLockScreenState extends State<AppLockScreen> {
           _error = '';
         });
       } else {
-        // Confirmation step
         if (pin == _firstPin) {
           await AppLockService.setPin(pin);
           widget.onUnlocked();
         } else {
+          HapticFeedback.heavyImpact();
           setState(() {
             _error = 'PINs don\'t match — try again';
             _entered = '';
@@ -117,7 +107,6 @@ class _AppLockScreenState extends State<AppLockScreen> {
         }
       }
     } else {
-      // Verify mode
       final correct = await AppLockService.verify(pin);
       if (correct) {
         widget.onUnlocked();
@@ -141,14 +130,14 @@ class _AppLockScreenState extends State<AppLockScreen> {
     if (_isSetupMode) {
       if (_isConfirmStep) {
         title = 'Confirm PIN';
-        subtitle = 'Re-enter your PIN to confirm';
+        subtitle = 'Re-enter your 4-digit PIN';
       } else {
         title = 'Set PIN';
-        subtitle = 'Choose a 4–6 digit PIN to lock the app';
+        subtitle = 'Choose a 4-digit PIN to lock the app';
       }
     } else {
       title = 'Enter PIN';
-      subtitle = 'Enter your PIN to unlock';
+      subtitle = 'Enter your 4-digit PIN to unlock';
     }
 
     return PopScope(
@@ -160,7 +149,6 @@ class _AppLockScreenState extends State<AppLockScreen> {
             children: [
               const Spacer(flex: 2),
 
-              // Lock icon
               Icon(
                 Icons.lock_outline,
                 size: 64,
@@ -183,15 +171,15 @@ class _AppLockScreenState extends State<AppLockScreen> {
 
               const SizedBox(height: 32),
 
-              // PIN dots
+              // PIN dots — exactly 4
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(6, (i) {
+                children: List.generate(_pinLength, (i) {
                   final filled = i < _entered.length;
                   return Container(
                     width: 16,
                     height: 16,
-                    margin: const EdgeInsets.symmetric(horizontal: 6),
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: filled ? cs.primary : cs.surfaceContainerHighest,
@@ -201,7 +189,6 @@ class _AppLockScreenState extends State<AppLockScreen> {
                 }),
               ),
 
-              // Error message
               if (_error.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 Text(
@@ -212,7 +199,6 @@ class _AppLockScreenState extends State<AppLockScreen> {
 
               const Spacer(flex: 1),
 
-              // Keypad
               _buildKeypad(cs),
 
               const SizedBox(height: 16),
@@ -223,16 +209,14 @@ class _AppLockScreenState extends State<AppLockScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Biometric button
                     if (_biometricAvailable && _biometricEnabled && !_isSetupMode)
                       IconButton(
                         onPressed: _tryBiometric,
                         icon: const Icon(Icons.fingerprint, size: 32),
-                        tooltip: 'Unlock with fingerprint',
+                        tooltip: 'Unlock with biometrics',
                       )
                     else
                       const SizedBox(width: 48),
-                    // Backspace
                     IconButton(
                       onPressed: _onBackspace,
                       icon: const Icon(Icons.backspace_outlined),
