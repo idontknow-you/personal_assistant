@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../models/alarms/alarm.dart';
 import '../../services/alarms/alarm_service.dart';
@@ -315,6 +316,7 @@ class _AlarmFormScreenState extends State<AlarmFormScreen> {
     // of just re-running the same save. This check is synchronous and
     // runs before anything else, so it closes that gap completely.
     if (_saving) return;
+    HapticFeedback.lightImpact();
     setState(() => _saving = true);
 
     try {

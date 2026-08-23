@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/habits/habit.dart';
 import '../../services/habits/habit_service.dart';
 
@@ -73,6 +74,7 @@ class _HabitListPageState extends State<HabitListPage> {
                   onPressed: () async {
                     final name = controller.text.trim();
                     if (name.isEmpty) return;
+                    HapticFeedback.lightImpact();
                     await widget.habitService.addHabit(
                       name,
                       frequency: selectedDays,

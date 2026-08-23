@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/tasks/task.dart';
 import '../../models/alarms/alarm.dart' as alarm_model;
@@ -150,6 +151,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
     // this is exactly what produced duplicate tasks/alarms. This check is
     // synchronous and runs before anything else, so it closes that gap.
     if (_saving) return;
+    HapticFeedback.lightImpact();
     if (!_canSave) return;
     setState(() => _saving = true);
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../models/notes/note.dart';
 import '../../services/notes/note_service.dart';
 
@@ -44,6 +45,7 @@ class _NoteFormScreenState extends State<NoteFormScreen> {
 
   Future<void> _save() async {
     if (_saving || !_canSave) return;
+    HapticFeedback.lightImpact();
     setState(() => _saving = true);
 
     try {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../models/dsa/dsa_problem.dart';
 import '../../services/dsa/dsa_problem_service.dart';
@@ -395,6 +396,7 @@ class _AddProblemScreenState extends State<_AddProblemScreen> {
 
   Future<void> _save() async {
     if (_saving || !_canSave) return;
+    HapticFeedback.lightImpact();
     setState(() => _saving = true);
 
     try {

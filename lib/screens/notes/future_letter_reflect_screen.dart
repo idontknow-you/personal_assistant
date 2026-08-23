@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../models/notes/future_letter.dart';
 import '../../services/notes/future_letter_service.dart';
@@ -34,6 +35,7 @@ class _FutureLetterReflectScreenState extends State<FutureLetterReflectScreen> {
 
   Future<void> _save() async {
     if (_saving || !_canSave) return;
+    HapticFeedback.lightImpact();
     setState(() => _saving = true);
 
     try {
