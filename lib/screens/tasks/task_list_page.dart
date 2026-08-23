@@ -17,10 +17,11 @@ import '../calendar/calendar_screen.dart';
 enum TaskFilter { all, today, overdue, completed }
 
 class TaskListPage extends StatefulWidget {
-  const TaskListPage({super.key, required this.uid, required this.alarmService});
+  const TaskListPage({super.key, required this.uid, required this.alarmService, this.onMenuPressed});
 
   final String uid;
   final AlarmService alarmService;
+  final VoidCallback? onMenuPressed;
 
   @override
   State<TaskListPage> createState() => _TaskListPageState();
@@ -274,6 +275,13 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: widget.onMenuPressed != null
+            ? IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'Menu',
+                onPressed: widget.onMenuPressed,
+              )
+            : null,
         title: const Text('Tasks'),
         actions: [
           IconButton(

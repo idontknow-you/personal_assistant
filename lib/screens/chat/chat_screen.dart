@@ -7,7 +7,8 @@ import '../../services/api/api_service.dart';
 
 /// Chat screen with voice input (STT) and voice output (TTS).
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key});
+  final VoidCallback? onMenuPressed;
+  const ChatScreen({super.key, this.onMenuPressed});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -189,6 +190,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: widget.onMenuPressed != null
+            ? IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'Menu',
+                onPressed: widget.onMenuPressed,
+              )
+            : null,
         title: const Text('Chat'),
         actions: [
           // TTS toggle

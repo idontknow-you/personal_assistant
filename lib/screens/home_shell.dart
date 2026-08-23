@@ -5,7 +5,6 @@ import 'today/today_screen.dart';
 import 'tasks/task_list_page.dart';
 import 'alarms/alarm_list_screen.dart';
 import 'habits/habit_list_page.dart';
-import 'notes/note_list_page.dart';
 import 'notes/brain_dump_page.dart';
 import 'notes/future_letter_list_page.dart';
 import 'settings/settings_screen.dart';
@@ -28,9 +27,9 @@ import '../services/profile_service.dart';
 import '../services/tags/tag_service.dart';
 import '../services/dsa/dsa_problem_service.dart';
 
-enum _NavTab { today, tasks, diary, brainDump }
+enum _NavTab { today, tasks, brainDump, chat }
 
-enum _DrawerPage { alarms, habits, dsa, letters, chat, people, search, doomScroll, settings }
+enum _DrawerPage { alarms, habits, dsa, letters, people, search, doomScroll, settings }
 
 class HomeShell extends StatefulWidget {
   final String uid;
@@ -237,9 +236,6 @@ class _HomeShellState extends State<HomeShell> {
       case _DrawerPage.dsa:
         screen = DSAScreen(problemService: _dsaService);
         break;
-      case _DrawerPage.chat:
-        screen = const ChatScreen();
-        break;
       case _DrawerPage.people:
         screen = PeopleScreen(peopleService: PeopleService(widget.uid));
         break;
@@ -273,15 +269,24 @@ class _HomeShellState extends State<HomeShell> {
       );
     }
 
+    final openDrawer = () => _drawerKey.currentState?.openDrawer();
+
     final bottomPages = [
       TodayScreen(
         uid: widget.uid,
         alarmService: alarmService,
-        onMenuPressed: () => _drawerKey.currentState?.openDrawer(),
+        onMenuPressed: openDrawer,
       ),
-      TaskListPage(uid: widget.uid, alarmService: alarmService),
-      NoteListPage(noteService: _noteService),
-      BrainDumpPage(brainDumpService: _brainDumpService),
+      TaskListPage(
+        uid: widget.uid,
+        alarmService: alarmService,
+        onMenuPressed: openDrawer,
+      ),
+      BrainDumpPage(
+        brainDumpService: _brainDumpService,
+        onMenuPressed: openDrawer,
+      ),
+      ChatScreen(onMenuPressed: openDrawer),
     ];
 
     return Scaffold(
@@ -298,9 +303,9 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(
               icon: Icon(Icons.checklist), label: 'Tasks'),
           NavigationDestination(
-              icon: Icon(Icons.book_outlined), label: 'Diary'),
-          NavigationDestination(
               icon: Icon(Icons.psychology_outlined), label: 'Dump'),
+          NavigationDestination(
+              icon: Icon(Icons.chat_bubble_outline), label: 'Chat'),
         ],
       ),
     );
@@ -361,11 +366,6 @@ class _HomeShellState extends State<HomeShell> {
               leading: const Icon(Icons.mail_outline),
               title: const Text('Letters to Future Me'),
               onTap: () => _openDrawerPage(_DrawerPage.letters),
-            ),
-            ListTile(
-              leading: const Icon(Icons.chat_bubble_outline),
-              title: const Text('Chat'),
-              onTap: () => _openDrawerPage(_DrawerPage.chat),
             ),
             ListTile(
               leading: const Icon(Icons.people_outline),

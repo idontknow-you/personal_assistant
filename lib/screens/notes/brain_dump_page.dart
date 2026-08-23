@@ -8,8 +8,9 @@ import 'brain_dump_capture_sheet.dart';
 /// Standalone brain dump page — lives in its own bottom nav tab.
 class BrainDumpPage extends StatefulWidget {
   final BrainDumpService brainDumpService;
+  final VoidCallback? onMenuPressed;
 
-  const BrainDumpPage({super.key, required this.brainDumpService});
+  const BrainDumpPage({super.key, required this.brainDumpService, this.onMenuPressed});
 
   @override
   State<BrainDumpPage> createState() => _BrainDumpPageState();
@@ -137,6 +138,13 @@ class _BrainDumpPageState extends State<BrainDumpPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: widget.onMenuPressed != null
+            ? IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'Menu',
+                onPressed: widget.onMenuPressed,
+              )
+            : null,
         title: const Text('Brain Dump'),
         actions: [
           if (_autoSorting)
