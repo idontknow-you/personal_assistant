@@ -10,7 +10,7 @@ class ApiService {
   /// Set this to your deployed backend URL.
   /// For local dev: http://10.0.2.2:5000 (Android emulator) or
   /// http://localhost:5000 (desktop/device).
-  static String baseUrl = 'http://10.120.175.146:5000';
+  static String baseUrl = 'https://personal-os-prg4.onrender.com';
 
   /// Returns a Firebase ID token for the current user, or null if signed out.
   static Future<String?> _getIdToken() async {

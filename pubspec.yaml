@@ -26,6 +26,8 @@ dependencies:
   flutter_markdown: ^0.7.4+3
   crypto: ^3.0.3
   local_auth: ^2.3.0
+  speech_to_text: ^7.0.0
+  flutter_tts: ^4.2.2
 
 dependency_overrides:
   flutter_fgbg: 0.6.0
