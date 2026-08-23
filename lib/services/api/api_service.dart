@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http;
+import 'pinned_http_client.dart';
 
 /// Talks to the Personal OS Flask backend.
 ///
@@ -27,7 +27,7 @@ class ApiService {
     final token = await _getIdToken();
     if (token == null) return null;
 
-    final response = await http.post(
+    final response = await PinnedHttpClient.client.post(
       Uri.parse('$baseUrl$path'),
       headers: {
         'Content-Type': 'application/json',
