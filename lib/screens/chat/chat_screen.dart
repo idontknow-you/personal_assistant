@@ -227,6 +227,7 @@ class _ChatScreenState extends State<ChatScreen> {
         // Round 2: send results back to Gemini for natural language response
         final followUp = await ApiService.chatWithFunctionResults(
           cleanText,
+          functionCalls.cast<Map<String, dynamic>>(),
           callResults,
           history: history,
         );
@@ -305,6 +306,15 @@ class _ChatScreenState extends State<ChatScreen> {
         case 'list_alarms':
           descriptions.add('Looking up your alarms');
           break;
+        case 'list_notes':
+          descriptions.add('Looking up your notes');
+          break;
+        case 'list_braindump':
+          descriptions.add('Looking up your brain dumps');
+          break;
+        case 'list_dsa_problems':
+          descriptions.add('Looking up your DSA problems');
+          break;
         default:
           descriptions.add('Running: $name');
       }
@@ -341,6 +351,12 @@ class _ChatScreenState extends State<ChatScreen> {
         return '${res['count']} habits found';
       case 'list_alarms':
         return '${res['count']} alarms found';
+      case 'list_notes':
+        return '${res['count']} notes found';
+      case 'list_braindump':
+        return '${res['count']} brain dump entries found';
+      case 'list_dsa_problems':
+        return '${res['count']} DSA problems found';
       default:
         return 'Done';
     }

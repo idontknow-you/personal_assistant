@@ -7,6 +7,7 @@ import '../../services/profile_service.dart';
 import '../../services/notes/note_service.dart';
 import '../../services/notes/future_letter_service.dart';
 import '../../services/alarms/alarm_service.dart';
+import '../../services/habits/habit_service.dart';
 import '../../services/api/api_service.dart';
 import '../../utils/date_utils.dart' as my_date_utils;
 
@@ -32,6 +33,7 @@ class _TodayScreenState extends State<TodayScreen> {
   late final TaskService _taskService;
   late final FutureLetterService _letterService;
   late final NoteService _noteService;
+  late final HabitService _habitService;
   String? _weeklyReview;
   bool _reviewLoading = false;
   bool _reviewExpanded = false;
@@ -43,6 +45,7 @@ class _TodayScreenState extends State<TodayScreen> {
     _taskService = TaskService(widget.uid, alarmService: widget.alarmService);
     _letterService = FutureLetterService(widget.uid);
     _noteService = NoteService(widget.uid);
+    _habitService = HabitService(widget.uid);
   }
 
   Future<void> _loadWeeklyReview() async {
@@ -53,7 +56,11 @@ class _TodayScreenState extends State<TodayScreen> {
       // Gather data for review
       final tasksSnap = await _taskService.watchTasks().first;
       final notesSnap = await _noteService.watchNotes().first;
+      final habitsSnap = await _habitService.watchHabits().first;
       final streakSnap = await _taskService.watchStreak().first;
+
+      // Filter to last 7 days
+      final weekAgo = DateTime.now().subtract(const Duration(days: 7));
 
       final tasksData = tasksSnap.map((t) => {
         'title': t.title,
@@ -61,18 +68,31 @@ class _TodayScreenState extends State<TodayScreen> {
         'dueDate': t.dueDate?.toDate().toIso8601String() ?? '',
       }).toList();
 
-      final notesData = notesSnap.map((n) => {
+      // Only include notes from the last 7 days
+      final recentNotes = notesSnap.where((n) {
+        final created = n.createdAt?.toDate();
+        return created != null && created.isAfter(weekAgo);
+      }).toList();
+
+      final notesData = recentNotes.map((n) => {
         'title': n.title,
         'mood': n.mood?.name ?? '',
         'content': n.content.length > 100 ? n.content.substring(0, 100) : n.content,
         'date': n.createdAt?.toDate().toIso8601String() ?? '',
       }).toList();
 
+      final habitsData = habitsSnap.map((h) => {
+        'name': h.name,
+        'currentStreak': h.currentStreak,
+        'bestStreak': h.bestStreak,
+        'frequency': h.frequency.toList(),
+      }).toList();
+
       final streak = streakSnap['currentStreak'] as int? ?? 0;
 
       final review = await ApiService.getWeeklyReview(
         tasks: tasksData,
-        habits: [],
+        habits: habitsData,
         notes: notesData,
         streak: streak,
       );

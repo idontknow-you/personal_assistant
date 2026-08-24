@@ -15,18 +15,20 @@ def chat():
     """POST /api/chat
 
     Body:
-        {"message": "...", "history": [{...}], "functionResults": [...]}
+        {"message": "...", "history": [{...}], "functionCalls": [...], "functionResults": [...]}
 
-    If Gemini responds with function calls, returns:
-        {"functionCalls": [{"name": "...", "args": {...}}]}
+    Round 1 (no functionCalls/functionResults):
+        Gemini decides whether to call a function or reply with text.
 
-    If functionResults is provided (round 2), returns:
-        {"reply": "..."}
+    Round 2 (with functionCalls + functionResults):
+        Client executed the functions, sends results back.
+        Gemini generates the natural language response.
     """
     uid = g.user["uid"]
     data = request.get_json(silent=True) or {}
     message = data.get("message", "").strip()
     history = data.get("history", [])
+    function_calls = data.get("functionCalls")
     function_results = data.get("functionResults")
 
     if not message and not function_results:
@@ -42,10 +44,11 @@ def chat():
 
     try:
         if function_results:
-            # Round 2: pass function results back to Gemini
+            # Round 2: pass function calls + results back to Gemini
             result = gemini_client.continue_chat(
-                message=message or "Function results received.",
+                message=message or "Please summarize the results for the user.",
                 history=clean_history,
+                function_calls=function_calls,
                 function_results=function_results,
             )
             return result

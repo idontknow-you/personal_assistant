@@ -56,12 +56,14 @@ class ApiService {
   /// Send function results back to get a natural language reply.
   static Future<Map<String, dynamic>?> chatWithFunctionResults(
     String originalMessage,
+    List<Map<String, dynamic>> functionCalls,
     List<Map<String, dynamic>> functionResults, {
     List<Map<String, dynamic>>? history,
   }) async {
     return await _post('/api/chat', {
       'message': originalMessage,
       'history': history ?? [],
+      'functionCalls': functionCalls,
       'functionResults': functionResults,
     });
   }

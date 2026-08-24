@@ -51,6 +51,12 @@ class ChatActionHandler {
         return _listHabits();
       case 'list_alarms':
         return _listAlarms();
+      case 'list_notes':
+        return _listNotes(args);
+      case 'list_braindump':
+        return _listBraindump(args);
+      case 'list_dsa_problems':
+        return _listDsaProblems();
       default:
         return {'error': 'Unknown function: $name'};
     }
@@ -338,5 +344,70 @@ class ChatActionHandler {
       };
     }).toList();
     return {'alarms': alarms, 'count': alarms.length};
+  }
+
+  // ---------------------------------------------------------------------------
+  // Note / Brain dump / DSA list functions
+  // ---------------------------------------------------------------------------
+
+  static Future<Map<String, dynamic>> _listNotes(
+      Map<String, dynamic> args) async {
+    final limit = (args['limit'] as int?) ?? 10;
+    final snap = await _col('notes')
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+    final notes = snap.docs.map((doc) {
+      final d = doc.data();
+      final content = d['content'] as String? ?? '';
+      return {
+        'id': doc.id,
+        'title': d['title'],
+        'mood': d['mood'],
+        'content': content.length > 200 ? '${content.substring(0, 200)}...' : content,
+        'date': (d['createdAt'] as Timestamp?)?.toDate().toIso8601String(),
+      };
+    }).toList();
+    return {'notes': notes, 'count': notes.length};
+  }
+
+  static Future<Map<String, dynamic>> _listBraindump(
+      Map<String, dynamic> args) async {
+    final limit = (args['limit'] as int?) ?? 10;
+    final snap = await _col('braindump')
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+    final entries = snap.docs.map((doc) {
+      final d = doc.data();
+      return {
+        'id': doc.id,
+        'text': d['text'],
+        'category': d['category'],
+        'date': (d['createdAt'] as Timestamp?)?.toDate().toIso8601String(),
+      };
+    }).toList();
+    return {'entries': entries, 'count': entries.length};
+  }
+
+  static Future<Map<String, dynamic>> _listDsaProblems() async {
+    final snap = await _col('dsa_problems')
+        .orderBy('nextReviewDate', descending: false)
+        .limit(20)
+        .get();
+    final problems = snap.docs.map((doc) {
+      final d = doc.data();
+      final nextReview = (d['nextReviewDate'] as Timestamp?)?.toDate();
+      final isDue = nextReview != null && nextReview.isBefore(DateTime.now());
+      return {
+        'id': doc.id,
+        'name': d['name'],
+        'reviewCount': d['reviewCount'],
+        'intervalDays': d['intervalDays'],
+        'nextReview': nextReview?.toIso8601String(),
+        'isDueForReview': isDue,
+      };
+    }).toList();
+    return {'problems': problems, 'count': problems.length};
   }
 }

@@ -166,7 +166,7 @@ _TOOLS = [
             ),
             genai.protos.FunctionDeclaration(
                 name="list_tasks",
-                description="List the user's current tasks. Use when they ask what tasks they have, what's due, etc.",
+                description="List the user's current tasks. Use when they ask what tasks they have, what's due, how many tasks, etc.",
                 parameters=genai.protos.Schema(
                     type=genai.protos.Type.OBJECT,
                     properties={},
@@ -183,6 +183,40 @@ _TOOLS = [
             genai.protos.FunctionDeclaration(
                 name="list_alarms",
                 description="List the user's current alarms. Use when they ask about alarms.",
+                parameters=genai.protos.Schema(
+                    type=genai.protos.Type.OBJECT,
+                    properties={},
+                ),
+            ),
+            genai.protos.FunctionDeclaration(
+                name="list_notes",
+                description="List the user's recent notes and diary entries. Use when they ask about their notes, journal entries, or what they wrote recently.",
+                parameters=genai.protos.Schema(
+                    type=genai.protos.Type.OBJECT,
+                    properties={
+                        "limit": genai.protos.Schema(
+                            type=genai.protos.Type.INTEGER,
+                            description="Max notes to return (default 10)",
+                        ),
+                    },
+                ),
+            ),
+            genai.protos.FunctionDeclaration(
+                name="list_braindump",
+                description="List the user's brain dump entries. Use when they ask about their brain dumps or quick notes.",
+                parameters=genai.protos.Schema(
+                    type=genai.protos.Type.OBJECT,
+                    properties={
+                        "limit": genai.protos.Schema(
+                            type=genai.protos.Type.INTEGER,
+                            description="Max entries to return (default 10)",
+                        ),
+                    },
+                ),
+            ),
+            genai.protos.FunctionDeclaration(
+                name="list_dsa_problems",
+                description="List the user's DSA problems and their review status. Use when they ask about their DSA practice.",
                 parameters=genai.protos.Schema(
                     type=genai.protos.Type.OBJECT,
                     properties={},
@@ -212,12 +246,15 @@ DSA problems, and general productivity.
 CRITICAL RULES:
 - When the user asks you to CREATE, ADD, or SET something, you MUST call the \
 appropriate function. Do NOT just say "Done!" without calling a function.
-- When the user asks what they have (tasks, habits, alarms), call the list function.
+- When the user asks what they have (tasks, habits, alarms, notes), call the \
+list function to get the actual data, then summarize it.
 - Parse natural language into the right parameters: \
   "tomorrow" → tomorrow's ISO date, "every day" → empty frequency array, \
   "Mon Wed Fri" → [1, 3, 5], "8:30 AM" → hour=8, minute=30, \
   "high priority" → priority="high".
 - After a function executes successfully, confirm what was created briefly.
+- When you receive function results (data about tasks, habits, etc.), \
+  summarize them clearly for the user.
 - Be direct and brief. No fluff, no "Great question!" preamble.
 - If the user asks something outside your scope, say so honestly.
 
@@ -260,7 +297,6 @@ def chat(message: str, history: list[dict] | None = None) -> dict:
             args = {}
             if fc.args:
                 for key, value in fc.args.items():
-                    # Convert proto values to Python primitives
                     if hasattr(value, "list_value"):
                         args[key] = list(value.list_value)
                     elif hasattr(value, "string_value"):
@@ -288,33 +324,58 @@ def chat(message: str, history: list[dict] | None = None) -> dict:
 def continue_chat(
     message: str,
     history: list[dict] | None = None,
+    function_calls: list[dict] | None = None,
     function_results: list[dict] | None = None,
 ) -> dict:
     """Continue a chat after function execution, passing results back to Gemini.
+
+    The history must include the original user message. We reconstruct the
+    full conversation: user message → model's function_call → function results.
 
     Returns:
         {"reply": str} with the natural language response after function execution.
     """
     model = _build_chat_model()
-    chat_session = model.start_chat(history= history or [])
 
-    # Build the function response message
-    parts = []
-    if function_results:
-        for fr in function_results:
-            # Create a Part with function response
-            parts.append(
+    # Build the full conversation history that includes the function call
+    # and response, so Gemini knows which data belongs to which request.
+    full_history = list(history or [])
+
+    # Add the model's turn that made the function calls
+    if function_calls:
+        # Reconstruct the function call parts
+        fc_parts = []
+        for fc in function_calls:
+            fc_parts.append(
                 genai.protos.Part(
-                    function_response=genai.protos.FunctionResponse(
-                        name=fr["name"],
-                        response=fr.get("result", {}),
+                    function_call=genai.protos.FunctionCall(
+                        name=fc["name"],
+                        args=fc.get("args", {}),
                     )
                 )
             )
-    else:
-        parts.append(message)
+        full_history.append({"role": "model", "parts": fc_parts})
 
-    response = chat_session.send_message(parts)
+        # Add the function response parts
+        if function_results:
+            fr_parts = []
+            for fr in function_results:
+                fr_parts.append(
+                    genai.protos.Part(
+                        function_response=genai.protos.FunctionResponse(
+                            name=fr["name"],
+                            response=fr.get("result", {}),
+                        )
+                    )
+                )
+            full_history.append({"role": "function", "parts": fr_parts})
+
+    chat_session = model.start_chat(history=full_history)
+
+    # Send the user's original message as a follow-up, or a generic prompt
+    response = chat_session.send_message(
+        message or "Please summarize the results for the user."
+    )
 
     result = {}
     for part in response.parts:
@@ -338,7 +399,6 @@ def auto_sort(texts: list[str]) -> list[dict]:
     )
     response = model.generate_content(prompt)
     raw = response.text.strip()
-    # Strip markdown fences if Gemini wraps them anyway
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1]
         if raw.endswith("```"):
