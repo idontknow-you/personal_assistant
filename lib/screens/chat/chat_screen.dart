@@ -493,7 +493,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            IconButton.filled(
+            IconButton.filledTonal(
               onPressed: _loading ? null : _send,
               icon: _loading
                   ? const SizedBox(
