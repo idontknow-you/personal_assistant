@@ -16,6 +16,8 @@ import 'doom_scroll/doom_scroll_settings_screen.dart';
 import 'doom_scroll/doom_scroll_interrupt_screen.dart';
 import 'app_lock/app_lock_screen.dart';
 import 'search/semantic_search_screen.dart';
+import 'calendar/calendar_screen.dart';
+import 'tasks/task_stats_screen.dart';
 import 'update/update_dialog.dart';
 import '../services/update/update_service.dart';
 import '../services/people/people_service.dart';
@@ -29,10 +31,11 @@ import '../services/notes/brain_dump_service.dart';
 import '../services/profile_service.dart';
 import '../services/tags/tag_service.dart';
 import '../services/dsa/dsa_problem_service.dart';
+import '../services/tasks/task_service.dart';
 
 enum _NavTab { today, tasks, brainDump, chat }
 
-enum _DrawerPage { alarms, habits, diary, dsa, letters, people, search, doomScroll, settings }
+enum _DrawerPage { alarms, habits, diary, dsa, letters, people, search, calendar, stats, doomScroll, settings }
 
 class HomeShell extends StatefulWidget {
   final String uid;
@@ -53,6 +56,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   late final ProfileService _profileService;
   late final TagService _tagService;
   late final DSAProblemService _dsaService;
+  late final TaskService _taskService;
   bool _namePrompted = false;
   bool _interruptShown = false;
   DateTime? _interruptSnoozedUntil;
@@ -71,6 +75,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _profileService = ProfileService(widget.uid);
     _tagService = TagService(widget.uid);
     _dsaService = DSAProblemService(widget.uid);
+    _taskService = TaskService(widget.uid, alarmService: alarmService);
     WidgetsBinding.instance.addObserver(this);
     _checkAppLock();
     _checkForUpdate();
@@ -298,6 +303,19 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       case _DrawerPage.doomScroll:
         screen = const DoomScrollSettingsScreen();
         break;
+      case _DrawerPage.calendar:
+        screen = CalendarScreen(
+          taskService: _taskService,
+          habitService: _habitService,
+          tagService: _tagService,
+        );
+        break;
+      case _DrawerPage.stats:
+        screen = TaskStatsScreen(
+          taskService: _taskService,
+          tagService: _tagService,
+        );
+        break;
       case _DrawerPage.settings:
         screen = SettingsScreen(tagService: _tagService);
         break;
@@ -434,6 +452,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               leading: const Icon(Icons.search),
               title: const Text('Search'),
               onTap: () => _openDrawerPage(_DrawerPage.search),
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_month),
+              title: const Text('Calendar'),
+              onTap: () => _openDrawerPage(_DrawerPage.calendar),
+            ),
+            ListTile(
+              leading: const Icon(Icons.bar_chart),
+              title: const Text('Stats'),
+              onTap: () => _openDrawerPage(_DrawerPage.stats),
             ),
             ListTile(
               leading: const Icon(Icons.screen_lock_portrait),

@@ -2,17 +2,13 @@ import 'package:flutter/material.dart';
 import '../../models/tasks/task.dart';
 import '../../services/tasks/task_service.dart';
 import '../../services/alarms/alarm_service.dart';
-import '../../services/habits/habit_service.dart';
 import '../../services/tags/tag_service.dart';
 import '../../services/profile_service.dart';
 import '../../utils/date_utils.dart' as my_date_utils;
 
 import '../../widgets/tasks/task_tile.dart';
 import '../../widgets/tasks/completion_history_sheet.dart';
-import '../settings/settings_screen.dart';
 import 'task_form_screen.dart';
-import 'task_stats_screen.dart';
-import '../calendar/calendar_screen.dart';
 
 enum TaskFilter { all, today, overdue, completed }
 
@@ -29,7 +25,6 @@ class TaskListPage extends StatefulWidget {
 
 class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver {
   late final TaskService _taskService;
-  late final HabitService _habitService;
   late final TagService _tagService;
   late final ProfileService _profileService;
   TaskFilter _filter = TaskFilter.all;
@@ -39,7 +34,6 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _taskService = TaskService(widget.uid, alarmService: widget.alarmService);
-    _habitService = HabitService(widget.uid);
     _tagService = TagService(widget.uid);
     _profileService = ProfileService(widget.uid);
     _taskService.runDailyRollover();
@@ -82,36 +76,7 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
     );
   }
 
-  void _openStats() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TaskStatsScreen(
-          taskService: _taskService,
-          tagService: _tagService,
-        ),
-      ),
-    );
-  }
 
-  void _openCalendar() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CalendarScreen(
-          taskService: _taskService,
-          habitService: _habitService,
-          tagService: _tagService,
-        ),
-      ),
-    );
-  }
-
-  void _openSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SettingsScreen(tagService: _tagService),
-      ),
-    );
-  }
 
   bool _isToday(Task t) {
     if (t.dueDate == null) return false;
@@ -242,16 +207,6 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
             : null,
         title: const Text('Tasks'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.calendar_month),
-            tooltip: 'Calendar',
-            onPressed: _openCalendar,
-          ),
-          IconButton(
-            icon: const Icon(Icons.bar_chart),
-            tooltip: 'Stats',
-            onPressed: _openStats,
-          ),
           StreamBuilder<Map<String, dynamic>>(
             stream: _taskService.watchStreak(),
             builder: (context, snapshot) {
@@ -278,11 +233,6 @@ class _TaskListPageState extends State<TaskListPage> with WidgetsBindingObserver
                 ),
               );
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-            onPressed: _openSettings,
           ),
           const SizedBox(width: 8),
         ],
