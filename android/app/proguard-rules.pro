@@ -12,3 +12,7 @@
 
 # Dart
 -keep class com.example.personal_os.** { *; }
+
+# Play Store split-install (not used, but Flutter references it)-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
