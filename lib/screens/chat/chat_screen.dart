@@ -4,9 +4,11 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../services/api/api_service.dart';
+import '../../services/chat/chat_action_handler.dart';
 import '../../utils/sanitizer.dart';
 
-/// Chat screen with voice input (STT) and voice output (TTS).
+/// Chat screen with voice input (STT), voice output (TTS),
+/// and AI function calling (creates tasks, alarms, habits, etc.).
 class ChatScreen extends StatefulWidget {
   final VoidCallback? onMenuPressed;
   const ChatScreen({super.key, this.onMenuPressed});
@@ -33,7 +35,6 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    // Don't block — initialize lazily when needed
   }
 
   Future<void> _ensureSpeechInit() async {
@@ -111,7 +112,6 @@ class _ChatScreenState extends State<ChatScreen> {
         if (result.recognizedWords.isNotEmpty) {
           setState(() => _controller.text = result.recognizedWords);
         }
-        // Auto-send on final result
         if (result.finalResult && result.recognizedWords.isNotEmpty) {
           _send();
         }
@@ -129,7 +129,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _speak(String text) async {
     if (!_ttsEnabled) return;
     await _ensureTtsInit();
-    // Strip markdown formatting for cleaner speech
     final cleanText = text
         .replaceAll(RegExp(r'```[\s\S]*?```'), 'code block omitted')
         .replaceAll(RegExp(r'`[^`]*`'), '')
@@ -148,7 +147,6 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
-    // Sanitize input before sending
     final cleanText = Sanitizer.sanitize(text);
 
     if (_isListening) {
@@ -172,25 +170,180 @@ class _ChatScreenState extends State<ChatScreen> {
         .toList();
     if (history.isNotEmpty) history.removeLast();
 
-    final reply = await ApiService.chat(cleanText, history: history);
+    // Round 1: send message to backend
+    final result = await ApiService.chatFull(cleanText, history: history);
 
     if (!mounted) return;
 
-    setState(() {
-      _loading = false;
-      if (reply != null) {
-        _messages.add(_ChatMessage(role: 'model', text: reply));
-      } else {
+    if (result == null) {
+      setState(() {
+        _loading = false;
         _messages.add(_ChatMessage(
           role: 'model',
-          text: '⚠️ Could not reach the AI backend. Check your internet connection or try again in a moment.'
+          text:
+              '⚠️ Could not reach the AI backend. Check your internet connection or try again in a moment.',
         ));
-      }
-    });
-    _scrollToBottom();
+      });
+      _scrollToBottom();
+      return;
+    }
 
-    // Auto-speak the reply
-    if (reply != null) _speak(reply);
+    // Check for function calls
+    final functionCalls = result['functionCalls'] as List<dynamic>?;
+    final reply = result['reply'] as String?;
+
+    if (functionCalls != null && functionCalls.isNotEmpty) {
+      // Show a "thinking" action message
+      setState(() {
+        _messages.add(_ChatMessage(
+          role: 'action',
+          text: _describeActions(functionCalls),
+        ));
+      });
+      _scrollToBottom();
+
+      // Execute function calls locally in Firestore
+      try {
+        final callResults = await ChatActionHandler.executeAll(
+          functionCalls.cast<Map<String, dynamic>>(),
+        );
+
+        // Show success feedback
+        final successMessages = callResults
+            .where((r) => (r['result'] as Map<String, dynamic>)['success'] == true)
+            .map((r) => _describeResult(r))
+            .toList();
+
+        if (successMessages.isNotEmpty) {
+          setState(() {
+            _messages.add(_ChatMessage(
+              role: 'action',
+              text: '✅ ${successMessages.join(", ")}',
+            ));
+          });
+          _scrollToBottom();
+        }
+
+        // Round 2: send results back to Gemini for natural language response
+        final followUp = await ApiService.chatWithFunctionResults(
+          cleanText,
+          callResults,
+          history: history,
+        );
+
+        final finalReply = followUp?['reply'] as String? ?? 'Done!';
+
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _messages.add(_ChatMessage(role: 'model', text: finalReply));
+          });
+          _scrollToBottom();
+          _speak(finalReply);
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _messages.add(_ChatMessage(
+              role: 'model',
+              text: '⚠️ Something went wrong executing that action: $e',
+            ));
+          });
+          _scrollToBottom();
+        }
+      }
+    } else {
+      // Simple text reply — no function calls
+      setState(() {
+        _loading = false;
+        _messages.add(_ChatMessage(role: 'model', text: reply ?? 'Done!'));
+      });
+      _scrollToBottom();
+      if (reply != null) _speak(reply);
+    }
+  }
+
+  /// Human-readable description of what functions will be called.
+  String _describeActions(List<dynamic> calls) {
+    final descriptions = <String>[];
+    for (final call in calls) {
+      final name = call['name'] as String;
+      final args = (call['args'] as Map<String, dynamic>?) ?? {};
+      switch (name) {
+        case 'create_task':
+          descriptions.add('Creating task: "${args['title'] ?? ''}"');
+          break;
+        case 'complete_task':
+          descriptions.add('Updating task status');
+          break;
+        case 'create_alarm':
+          final h = args['hour'] ?? 0;
+          final m = args['minute'] ?? 0;
+          descriptions.add(
+              'Setting alarm: ${args['label'] ?? 'Alarm'} at ${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}');
+          break;
+        case 'create_habit':
+          descriptions.add('Adding habit: "${args['name'] ?? ''}"');
+          break;
+        case 'add_note':
+          descriptions.add('Saving note: "${args['title'] ?? ''}"');
+          break;
+        case 'add_braindump':
+          descriptions.add('Saving brain dump entry');
+          break;
+        case 'add_dsa_problem':
+          descriptions.add(
+              'Adding DSA problem: "${args['name'] ?? ''}"');
+          break;
+        case 'list_tasks':
+          descriptions.add('Looking up your tasks');
+          break;
+        case 'list_habits':
+          descriptions.add('Looking up your habits');
+          break;
+        case 'list_alarms':
+          descriptions.add('Looking up your alarms');
+          break;
+        default:
+          descriptions.add('Running: $name');
+      }
+    }
+    return descriptions.join('\n');
+  }
+
+  /// Human-readable result of a function call.
+  String _describeResult(Map<String, dynamic> result) {
+    final name = result['name'] as String;
+    final res = result['result'] as Map<String, dynamic>;
+    switch (name) {
+      case 'create_task':
+        return 'Created task "${res['title']}"';
+      case 'complete_task':
+        return res['completed'] == true
+            ? 'Marked task as done'
+            : 'Unmarked task';
+      case 'create_alarm':
+        final h = res['hour'] ?? 0;
+        final m = res['minute'] ?? 0;
+        return 'Set alarm "${res['label']}" at ${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
+      case 'create_habit':
+        return 'Started tracking "${res['name']}"';
+      case 'add_note':
+        return 'Saved note "${res['title']}"';
+      case 'add_braindump':
+        return 'Saved brain dump';
+      case 'add_dsa_problem':
+        return 'Added "${res['name']}" to DSA review';
+      case 'list_tasks':
+        return '${res['count']} tasks found';
+      case 'list_habits':
+        return '${res['count']} habits found';
+      case 'list_alarms':
+        return '${res['count']} alarms found';
+      default:
+        return 'Done';
+    }
   }
 
   @override
@@ -206,7 +359,6 @@ class _ChatScreenState extends State<ChatScreen> {
             : null,
         title: const Text('Chat'),
         actions: [
-          // TTS toggle
           IconButton(
             icon: Icon(
               _ttsEnabled ? Icons.volume_up : Icons.volume_off,
@@ -270,7 +422,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Ask me about your tasks, habits, mood patterns, or anything on your mind.\n\nTap the 🎤 to speak instead of type.',
+              'Ask me to create tasks, set alarms, add habits, write notes, and more.\n\nTry: "Create a task to buy groceries tomorrow"\nOr: "Set an alarm for 7:30 AM"\nOr: "Add a habit to exercise every day"',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -298,7 +450,6 @@ class _ChatScreenState extends State<ChatScreen> {
         top: false,
         child: Row(
           children: [
-            // Mic button
             IconButton(
               onPressed: _speechAvailable ? _toggleListening : null,
               icon: Icon(
@@ -308,7 +459,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               tooltip: _isListening ? 'Stop listening' : 'Speak',
             ),
-            // Text field
             Expanded(
               child: TextField(
                 controller: _controller,
@@ -316,7 +466,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 minLines: 1,
                 maxLines: 5,
                 decoration: InputDecoration(
-                  hintText: _isListening ? 'Listening...' : 'Ask anything...',
+                  hintText: _isListening
+                      ? 'Listening...'
+                      : 'Create a task, set alarm, add habit...',
                   border: const OutlineInputBorder(),
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 12),
@@ -343,7 +495,7 @@ class _ChatScreenState extends State<ChatScreen> {
 }
 
 class _ChatMessage {
-  final String role;
+  final String role; // 'user', 'model', 'action'
   final String text;
   _ChatMessage({required this.role, required this.text});
 }
@@ -362,7 +514,31 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.role == 'user';
+    final isAction = message.role == 'action';
     final scheme = Theme.of(context).colorScheme;
+
+    // Action messages — small, centered, muted
+    if (isAction) {
+      return Align(
+        alignment: Alignment.center,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: scheme.primaryContainer.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            message.text,
+            style: TextStyle(
+              fontSize: 12,
+              color: scheme.onPrimaryContainer.withValues(alpha: 0.8),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -398,7 +574,6 @@ class _MessageBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-            // Speak button for AI replies
             if (!isUser && ttsEnabled)
               Align(
                 alignment: Alignment.centerRight,

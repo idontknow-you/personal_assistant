@@ -42,15 +42,36 @@ class ApiService {
     return null;
   }
 
-  /// Send a chat message and get a reply.
+  /// Send a chat message and get the full response (may include functionCalls).
+  static Future<Map<String, dynamic>?> chatFull(
+    String message, {
+    List<Map<String, dynamic>>? history,
+  }) async {
+    return await _post('/api/chat', {
+      'message': message,
+      'history': history ?? [],
+    });
+  }
+
+  /// Send function results back to get a natural language reply.
+  static Future<Map<String, dynamic>?> chatWithFunctionResults(
+    String originalMessage,
+    List<Map<String, dynamic>> functionResults, {
+    List<Map<String, dynamic>>? history,
+  }) async {
+    return await _post('/api/chat', {
+      'message': originalMessage,
+      'history': history ?? [],
+      'functionResults': functionResults,
+    });
+  }
+
+  /// Send a chat message and get a text reply (convenience wrapper).
   static Future<String?> chat(
     String message, {
     List<Map<String, dynamic>>? history,
   }) async {
-    final result = await _post('/api/chat', {
-      'message': message,
-      'history': history ?? [],
-    });
+    final result = await chatFull(message, history: history);
     return result?['reply'] as String?;
   }
 
