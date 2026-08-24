@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/notes/brain_dump.dart';
 import '../../services/notes/brain_dump_service.dart';
+import '../../services/notes/note_service.dart';
+import '../../services/tasks/task_service.dart';
+import '../../services/dsa/dsa_problem_service.dart';
 import '../../services/api/api_service.dart';
 import 'brain_dump_capture_sheet.dart';
 
@@ -39,6 +42,56 @@ class _BrainDumpPageState extends State<BrainDumpPage> {
     );
     if (confirmed == true) {
       await widget.brainDumpService.deleteEntry(entry.id);
+    }
+  }
+
+  Future<void> _applyAutoSort(
+      List<Map<String, dynamic>> results, List<BrainDump> entries) async {
+    final uid = widget.brainDumpService.uid;
+    final taskService = TaskService(uid);
+    final noteService = NoteService(uid);
+    final dsaService = DSAProblemService(uid);
+
+    int created = 0;
+    for (final r in results) {
+      final category = r['category'] as String? ?? 'braindump';
+      final title = r['title'] as String? ?? '';
+      final text = r['text'] as String? ?? '';
+
+      switch (category) {
+        case 'task':
+          await taskService.addTask(title.isNotEmpty ? title : text);
+          created++;
+          break;
+        case 'note':
+        case 'diary':
+          await noteService.addNote(
+            title: title.isNotEmpty ? title : text,
+            content: text,
+          );
+          created++;
+          break;
+        case 'dsa':
+          await dsaService.addProblem(name: title.isNotEmpty ? title : text);
+          created++;
+          break;
+        default:
+          // braindump and people stay as brain dump entries
+          break;
+      }
+    }
+
+    // Delete all original brain dump entries
+    for (final entry in entries) {
+      await widget.brainDumpService.deleteEntry(entry.id);
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sorted! Created $created items, cleared ${entries.length} brain dumps.'),
+        ),
+      );
     }
   }
 
@@ -104,19 +157,9 @@ class _BrainDumpPageState extends State<BrainDumpPage> {
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Keep in Dump'),
             ),
-            FilledButton(
-              onPressed: () async {
+            FilledButton(                  onPressed: () async {
                 Navigator.pop(ctx);
-                for (final entry in entries) {
-                  await widget.brainDumpService.deleteEntry(entry.id);
-                }
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${results.length} entries sorted and cleared.'),
-                    ),
-                  );
-                }
+                await _applyAutoSort(results, entries);
               },
               child: const Text('Accept & Clear'),
             ),
