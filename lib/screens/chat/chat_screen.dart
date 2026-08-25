@@ -174,14 +174,36 @@ class _ChatScreenState extends State<ChatScreen> {
     // Round 1: send message to backend
     String? errorMsg;
     Map<String, dynamic>? result;
+    String debugInfo = '';
     setState(() {
       _messages.add(_ChatMessage(role: 'action', text: 'Connecting to AI...'));
     });
     _scrollToBottom();
     try {
-      result = await ApiService.chatFull(cleanText, history: history);
+      // Try direct Gemini
+      final hasKey = await GeminiService.isConfigured();
+      debugInfo = 'key=$hasKey';
+      if (hasKey) {
+        try {
+          result = await GeminiService.chat(cleanText, history: history);
+          debugInfo += ' direct=ok';
+        } catch (e) {
+          debugInfo += ' direct=err:${e.toString().substring(0, 80.clamp(0, e.toString().length))}';
+          // Fall through to backend
+        }
+      }
+      // Fallback to backend
+      if (result == null) {
+        try {
+          result = await ApiService.chatFull(cleanText, history: history);
+          debugInfo += ' backend=ok';
+        } catch (e) {
+          debugInfo += ' backend=err:${e.toString().substring(0, 80.clamp(0, e.toString().length))}';
+        }
+      }
     } catch (e) {
       errorMsg = e.toString();
+      debugInfo += ' fatal=$e';
     }
     // Remove the connecting message
     if (_messages.isNotEmpty && _messages.last.text == 'Connecting to AI...') {
@@ -195,18 +217,16 @@ class _ChatScreenState extends State<ChatScreen> {
       final isRateLimit = detail.contains('429') || detail.contains('RESOURCE_EXHAUSTED') || detail.contains('rate');
       String userMessage;
       if (isRateLimit) {
-        // Extract wait time from error
         final match = RegExp(r'retry in (\d+\.?\d*)s').firstMatch(detail);
         final waitSec = match != null ? double.parse(match.group(1)!).ceil() : 60;
-        userMessage = '⚠️ Rate limited. Wait ${waitSec}s before trying again.';
-        // Auto-cooldown: disable send for the wait time
+        userMessage = '⚠️ Rate limited. Wait ${waitSec}s.';
         _cooldown = true;
         setState(() {});
         Future.delayed(Duration(seconds: waitSec), () {
           if (mounted) { _cooldown = false; setState(() {}); }
         });
       } else {
-        userMessage = '⚠️ Could not reach AI. Check your internet and try again.';
+        userMessage = '⚠️ Could not reach AI.\n$debugInfo';
       }
       setState(() {
         _loading = false;
