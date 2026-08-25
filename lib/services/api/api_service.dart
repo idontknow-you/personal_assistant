@@ -71,12 +71,14 @@ class ApiService {
 
     // Fallback to backend
     try {
-      return await _post('/api/chat', {
+      final result = await _post('/api/chat', {
         'message': message,
         'history': history ?? [],
       });
-    } catch (_) {
-      return null;
+      if (result == null) throw Exception('Backend returned empty response');
+      return result;
+    } catch (e) {
+      throw Exception('Backend error: $e');
     }
   }
 
