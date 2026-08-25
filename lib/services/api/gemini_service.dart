@@ -230,52 +230,16 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
   ///   `{"reply": "..."}` for a text response,
   ///   `{"functionCalls": [...]}` if Gemini wants to call functions,
   ///   `{"reply": "...", "functionCalls": [...]}` if both.
-  /// Send a POST request with auto-retry for rate limits (429 / 4029).
-  static Future<http.Response> _postWithRetry(
+  /// Send a POST request. Returns the response as-is (including 429s).
+  static Future<http.Response> _post(
     Uri uri,
-    Map<String, dynamic> body, {
-    int maxRetries = 5,
-  }) async {
-    for (var attempt = 0; attempt <= maxRetries; attempt++) {
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 30));
-
-      // Rate limited — extract wait time and retry
-      if (response.statusCode == 429 || response.statusCode == 4029) {
-        if (attempt < maxRetries) {
-          // Parse retry delay from error message, default to 30s
-          final waitSeconds = _parseRetryDelay(response.body) ?? (30 * (attempt + 1));
-          await Future.delayed(Duration(seconds: waitSeconds));
-          continue;
-        }
-      }
-
-      return response;
-    }
-    // Shouldn't reach here, but just in case
-    throw GeminiException('Max retries exceeded');
-  }
-
-  /// Extract retry delay from Gemini error response.
-  static int? _parseRetryDelay(String body) {
-    try {
-      final data = jsonDecode(body);
-      final details = data['error']?['details'] as List?;
-      if (details != null) {
-        for (final d in details) {
-          final msg = d['message'] as String? ?? '';
-          // "Please retry in 42.38s"
-          final match = RegExp(r'retry in (\d+\.?\d*)s').firstMatch(msg);
-          if (match != null) {
-            return (double.parse(match.group(1)!)).ceil();
-          }
-        }
-      }
-    } catch (_) {}
-    return null;
+    Map<String, dynamic> body,
+  ) async {
+    return await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 30));
   }
 
   static Future<Map<String, dynamic>> chat(
@@ -291,7 +255,7 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
     final body = _buildRequestBody(contents, includeTools: true);
 
     try {
-      final response = await _postWithRetry(
+      final response = await _post(
         Uri.parse('$_baseUrl/models/$_model:generateContent?key=$apiKey'),
         body,
       );
@@ -310,7 +274,6 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
   }
 
   /// Continue a chat after function execution, passing results back to Gemini.
-  static Future<Map<String, dynamic>> continueChat(
     String message, {
     List<Map<String, dynamic>>? history,
     List<Map<String, dynamic>>? functionCalls,
@@ -326,7 +289,7 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
     );
     final body = _buildRequestBody(contents, includeTools: false);
 
-    final response = await _postWithRetry(
+    final response = await _post(
       Uri.parse('$_baseUrl/models/$_model:generateContent?key=$apiKey'),
       body,
     );
@@ -357,7 +320,7 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
       ],
     };
 
-    final response = await _postWithRetry(
+    final response = await _post(
       Uri.parse('$_baseUrl/models/$_model:generateContent?key=$apiKey'),
       body,
     );
