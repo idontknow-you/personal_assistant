@@ -31,6 +31,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _speechAvailable = false;
   bool _speechInitialized = false;
   bool _ttsInitialized = false;
+  bool _cooldown = false; // prevents spamming during rate limits
 
   @override
   void initState() {
@@ -183,11 +184,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (result == null) {
       final detail = errorMsg ?? 'No response from API';
-      // Show a user-friendly message, not raw errors
       final isRateLimit = detail.contains('429') || detail.contains('RESOURCE_EXHAUSTED') || detail.contains('rate');
-      final userMessage = isRateLimit
-          ? '⚠️ Too many requests. Wait a minute and try again.'
-          : '⚠️ Could not reach AI. Check your internet and try again.';
+      String userMessage;
+      if (isRateLimit) {
+        // Extract wait time from error
+        final match = RegExp(r'retry in (\d+\.?\d*)s').firstMatch(detail);
+        final waitSec = match != null ? double.parse(match.group(1)!).ceil() : 60;
+        userMessage = '⚠️ Rate limited. Wait ${waitSec}s before trying again.';
+        // Auto-cooldown: disable send for the wait time
+        _cooldown = true;
+        setState(() {});
+        Future.delayed(Duration(seconds: waitSec), () {
+          if (mounted) { _cooldown = false; setState(() {}); }
+        });
+      } else {
+        userMessage = '⚠️ Could not reach AI. Check your internet and try again.';
+      }
       setState(() {
         _loading = false;
         _messages.add(_ChatMessage(role: 'model', text: userMessage));
@@ -502,7 +514,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(width: 8),
             IconButton.filledTonal(
-              onPressed: _loading ? null : _send,
+              onPressed: (_loading || _cooldown) ? null : _send,
               icon: _loading
                   ? const SizedBox(
                       width: 20,

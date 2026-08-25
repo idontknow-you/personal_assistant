@@ -234,7 +234,7 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
   static Future<http.Response> _postWithRetry(
     Uri uri,
     Map<String, dynamic> body, {
-    int maxRetries = 3,
+    int maxRetries = 5,
   }) async {
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       final response = await http.post(
