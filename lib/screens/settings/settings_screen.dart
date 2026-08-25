@@ -10,6 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
 import '../../services/tags/tag_service.dart';
 import '../../services/app_lock/app_lock_service.dart';
+import '../../services/api/gemini_service.dart';
 import '../../theme/app_theme.dart';
 import '../tags/tag_management_screen.dart';
 import '../app_lock/app_lock_screen.dart';
@@ -238,6 +239,10 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 24),
+
+          _SectionLabel('AI'),
+          _GeminiApiKeySection(),
           const SizedBox(height: 24),
 
           _SectionLabel('Security'),
@@ -532,6 +537,130 @@ class _SectionLabel extends StatelessWidget {
             ),
       ),
     );
+  }
+}
+
+class _GeminiApiKeySection extends StatefulWidget {
+  @override
+  State<_GeminiApiKeySection> createState() => _GeminiApiKeySectionState();
+}
+
+class _GeminiApiKeySectionState extends State<_GeminiApiKeySection> {
+  bool _configured = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final configured = await GeminiService.isConfigured();
+    if (mounted) setState(() { _configured = configured; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const SizedBox.shrink();
+
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(
+              _configured ? Icons.check_circle : Icons.key,
+              color: _configured ? Theme.of(context).colorScheme.primary : null,
+            ),
+            title: const Text('Gemini API Key'),
+            subtitle: Text(
+              _configured
+                  ? 'Configured — AI runs directly on your phone'
+                  : 'Not set — using backend (slower, may timeout)',
+            ),
+            trailing: const Icon(Icons.edit_outlined, size: 20),
+            onTap: () => _promptApiKey(context),
+          ),
+          if (_configured) ...[
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: AppColors.error),
+              title: Text('Remove key', style: TextStyle(color: AppColors.error)),
+              onTap: () async {
+                await GeminiService.clearApiKey();
+                setState(() => _configured = false);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gemini key removed. Using backend.')),
+                  );
+                }
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _promptApiKey(BuildContext context) async {
+    final current = await GeminiService.getApiKey() ?? '';
+    final controller = TextEditingController(text: current);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gemini API Key'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter your Google AI API key to run AI directly on your phone. '
+              'Get one free at aistudio.google.com/apikey',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              obscureText: true,
+              decoration: const InputDecoration(
+                hintText: 'AIza...',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || !context.mounted) return;
+    if (result.isEmpty) {
+      await GeminiService.clearApiKey();
+    } else {
+      await GeminiService.setApiKey(result);
+    }
+    setState(() => _configured = result.isNotEmpty);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.isEmpty
+                ? 'Key removed. Using backend.'
+                : 'Key saved! AI will run directly on your phone.',
+          ),
+        ),
+      );
+    }
   }
 }
 
