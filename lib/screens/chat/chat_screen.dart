@@ -174,10 +174,18 @@ class _ChatScreenState extends State<ChatScreen> {
     // Round 1: send message to backend
     String? errorMsg;
     Map<String, dynamic>? result;
+    setState(() {
+      _messages.add(_ChatMessage(role: 'action', text: 'Connecting to AI...'));
+    });
+    _scrollToBottom();
     try {
       result = await ApiService.chatFull(cleanText, history: history);
     } catch (e) {
       errorMsg = e.toString();
+    }
+    // Remove the connecting message
+    if (_messages.isNotEmpty && _messages.last.text == 'Connecting to AI...') {
+      _messages.removeLast();
     }
 
     if (!mounted) return;

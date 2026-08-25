@@ -29,7 +29,7 @@ class ApiService {
     final token = await _getIdToken();
     if (token == null) return null;
 
-    // 90s timeout — Render free tier cold starts can take 30-60s
+    // 30s timeout — Render cold starts are slow but we shouldn't block forever
     final response = await PinnedHttpClient.client
         .post(
           Uri.parse('$baseUrl$path'),
@@ -39,7 +39,7 @@ class ApiService {
           },
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 90));
+        .timeout(const Duration(seconds: 30));
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -64,11 +64,15 @@ class ApiService {
       }
     }
 
-    // Fallback to backend
-    return await _post('/api/chat', {
-      'message': message,
-      'history': history ?? [],
-    });
+    // Fallback to backend (short timeout — Render cold starts are slow)
+    try {
+      return await _post('/api/chat', {
+        'message': message,
+        'history': history ?? [],
+      });
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<Map<String, dynamic>?> chatWithFunctionResults(
