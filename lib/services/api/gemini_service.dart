@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Falls back gracefully if no API key is configured.
 class GeminiService {
   static const _baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-  static const _model = 'gemini-2.0-flash';
+  static const _model = 'gemini-2.5-flash';
   static const _prefsKey = 'gemini_api_key';
 
   static String? _cachedKey;
