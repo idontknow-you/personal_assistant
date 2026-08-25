@@ -59,12 +59,17 @@ class ApiService {
     if (preferDirect && await GeminiService.isConfigured()) {
       try {
         return await GeminiService.chat(message, history: history);
-      } catch (_) {
-        // Fall through to backend
+      } catch (e) {
+        // Rate limit — don't fall back to backend, just propagate the error
+        // so the user sees the actual wait time
+        if (e.toString().contains('429') || e.toString().contains('RESOURCE_EXHAUSTED')) {
+          rethrow;
+        }
+        // Other errors — fall through to backend
       }
     }
 
-    // Fallback to backend (short timeout — Render cold starts are slow)
+    // Fallback to backend
     try {
       return await _post('/api/chat', {
         'message': message,

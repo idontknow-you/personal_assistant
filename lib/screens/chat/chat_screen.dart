@@ -219,7 +219,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (isRateLimit) {
         final match = RegExp(r'retry in (\d+\.?\d*)s').firstMatch(detail);
         final waitSec = match != null ? double.parse(match.group(1)!).ceil() : 60;
-        userMessage = '⚠️ Rate limited. Wait ${waitSec}s.';
+        userMessage = '⚠️ Rate limited — too many requests.\nWait ${waitSec}s then try again.';
         _cooldown = true;
         setState(() {});
         Future.delayed(Duration(seconds: waitSec), () {
