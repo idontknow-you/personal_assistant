@@ -4,6 +4,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../services/api/api_service.dart';
+import '../../services/api/gemini_service.dart';
 import '../../services/chat/chat_action_handler.dart';
 import '../../utils/sanitizer.dart';
 
