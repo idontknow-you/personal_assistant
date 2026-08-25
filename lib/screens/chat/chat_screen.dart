@@ -171,18 +171,26 @@ class _ChatScreenState extends State<ChatScreen> {
     if (history.isNotEmpty) history.removeLast();
 
     // Round 1: send message to backend
-    final result = await ApiService.chatFull(cleanText, history: history);
+    String? errorMsg;
+    Map<String, dynamic>? result;
+    try {
+      result = await ApiService.chatFull(cleanText, history: history);
+    } catch (e) {
+      errorMsg = e.toString();
+    }
 
     if (!mounted) return;
 
     if (result == null) {
+      final detail = errorMsg ?? 'No response from API';
+      // Show a user-friendly message, not raw errors
+      final isRateLimit = detail.contains('429') || detail.contains('RESOURCE_EXHAUSTED') || detail.contains('rate');
+      final userMessage = isRateLimit
+          ? '⚠️ Too many requests. Wait a minute and try again.'
+          : '⚠️ Could not reach AI. Check your internet and try again.';
       setState(() {
         _loading = false;
-        _messages.add(_ChatMessage(
-          role: 'model',
-          text:
-              '⚠️ Could not reach the AI backend. Check your internet connection or try again in a moment.',
-        ));
+        _messages.add(_ChatMessage(role: 'model', text: userMessage));
       });
       _scrollToBottom();
       return;

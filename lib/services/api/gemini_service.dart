@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Falls back gracefully if no API key is configured.
 class GeminiService {
   static const _baseUrl = 'https://generativelanguage.googleapis.com/v1beta';
-  static const _model = 'gemini-flash-latest';
+  static const _model = 'gemini-2.0-flash';
   static const _prefsKey = 'gemini_api_key';
 
   static String? _cachedKey;
@@ -229,6 +230,54 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
   ///   `{"reply": "..."}` for a text response,
   ///   `{"functionCalls": [...]}` if Gemini wants to call functions,
   ///   `{"reply": "...", "functionCalls": [...]}` if both.
+  /// Send a POST request with auto-retry for rate limits (429 / 4029).
+  static Future<http.Response> _postWithRetry(
+    Uri uri,
+    Map<String, dynamic> body, {
+    int maxRetries = 3,
+  }) async {
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 30));
+
+      // Rate limited — extract wait time and retry
+      if (response.statusCode == 429 || response.statusCode == 4029) {
+        if (attempt < maxRetries) {
+          // Parse retry delay from error message, default to 30s
+          final waitSeconds = _parseRetryDelay(response.body) ?? (30 * (attempt + 1));
+          await Future.delayed(Duration(seconds: waitSeconds));
+          continue;
+        }
+      }
+
+      return response;
+    }
+    // Shouldn't reach here, but just in case
+    throw GeminiException('Max retries exceeded');
+  }
+
+  /// Extract retry delay from Gemini error response.
+  static int? _parseRetryDelay(String body) {
+    try {
+      final data = jsonDecode(body);
+      final details = data['error']?['details'] as List?;
+      if (details != null) {
+        for (final d in details) {
+          final msg = d['message'] as String? ?? '';
+          // "Please retry in 42.38s"
+          final match = RegExp(r'retry in (\d+\.?\d*)s').firstMatch(msg);
+          if (match != null) {
+            return (double.parse(match.group(1)!)).ceil();
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   static Future<Map<String, dynamic>> chat(
     String message, {
     List<Map<String, dynamic>>? history,
@@ -241,19 +290,23 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
     final contents = _buildContents(message, history);
     final body = _buildRequestBody(contents, includeTools: true);
 
-    final response = await http.post(
-      Uri.parse('$_baseUrl/models/$_model:generateContent?key=$apiKey'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
-
-    if (response.statusCode != 200) {
-      throw GeminiException(
-        'Gemini API error ${response.statusCode}: ${response.body}',
+    try {
+      final response = await _postWithRetry(
+        Uri.parse('$_baseUrl/models/$_model:generateContent?key=$apiKey'),
+        body,
       );
-    }
 
-    return _parseResponse(jsonDecode(response.body));
+      if (response.statusCode != 200) {
+        throw GeminiException(
+          'Gemini API error ${response.statusCode}: ${response.body}',
+        );
+      }
+
+      return _parseResponse(jsonDecode(response.body));
+    } catch (e) {
+      if (e is GeminiException) rethrow;
+      throw GeminiException('Network error: $e');
+    }
   }
 
   /// Continue a chat after function execution, passing results back to Gemini.
@@ -273,10 +326,9 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
     );
     final body = _buildRequestBody(contents, includeTools: false);
 
-    final response = await http.post(
+    final response = await _postWithRetry(
       Uri.parse('$_baseUrl/models/$_model:generateContent?key=$apiKey'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
+      body,
     );
 
     if (response.statusCode != 200) {
@@ -305,10 +357,9 @@ Brain dump auto-sort format — when the user asks you to sort/categorize brain 
       ],
     };
 
-    final response = await http.post(
+    final response = await _postWithRetry(
       Uri.parse('$_baseUrl/models/$_model:generateContent?key=$apiKey'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
+      body,
     );
 
     if (response.statusCode != 200) {

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'pinned_http_client.dart';
@@ -60,8 +59,8 @@ class ApiService {
     if (preferDirect && await GeminiService.isConfigured()) {
       try {
         return await GeminiService.chat(message, history: history);
-      } catch (e) {
-        print('⚠️ Direct Gemini failed, falling back to backend: $e');
+      } catch (_) {
+        // Fall through to backend
       }
     }
 
@@ -87,8 +86,8 @@ class ApiService {
           functionCalls: functionCalls,
           functionResults: functionResults,
         );
-      } catch (e) {
-        print('⚠️ Direct Gemini continueChat failed, falling back to backend: $e');
+      } catch (_) {
+        // Fall through to backend
       }
     }
 
