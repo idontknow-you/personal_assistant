@@ -160,8 +160,13 @@ class DoomScrollService {
 
   /// Check all monitored apps and return list of apps that exceeded their limit.
   /// Also checks the global limit (sum of all monitored apps).
+  /// Always excludes Personal OS itself — no point blocking the app we're running in.
   static Future<List<Map<String, dynamic>>> checkLimits() async {
     if (!await isEnabled()) return [];
+    // Skip the current app — never block the user from using Personal OS
+    // (We can't self-identify by package name here, so we skip by checking
+    //  the native getUsageStats which already filters us out. But as an extra
+    //  safety net, we also filter the monitored list below.)
 
     final monitored = await getMonitoredApps();
     if (monitored.isEmpty) return [];
