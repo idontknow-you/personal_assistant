@@ -1,11 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/notes/brain_dump.dart';
+import '../../models/tasks/task.dart';
+import '../../models/alarms/alarm.dart' as alarm_model;
 import '../../services/notes/brain_dump_service.dart';
 import '../../services/notes/note_service.dart';
 import '../../services/tasks/task_service.dart';
 import '../../services/dsa/dsa_problem_service.dart';
 import '../../services/api/api_service.dart';
+import '../../main.dart' show alarmService;
 import 'brain_dump_capture_sheet.dart';
 
 /// Standalone brain dump page — lives in its own bottom nav tab.
@@ -48,7 +52,9 @@ class _BrainDumpPageState extends State<BrainDumpPage> {
   Future<void> _applyAutoSort(
       List<Map<String, dynamic>> results, List<BrainDump> entries) async {
     final uid = widget.brainDumpService.uid;
-    final taskService = TaskService(uid);
+    // Pass alarmService through so a task created here can get a real,
+    // scheduled linked alarm — not just a Firestore field.
+    final taskService = TaskService(uid, alarmService: alarmService);
     final noteService = NoteService(uid);
     final dsaService = DSAProblemService(uid);
 
@@ -57,17 +63,76 @@ class _BrainDumpPageState extends State<BrainDumpPage> {
       final category = r['category'] as String? ?? 'braindump';
       final title = r['title'] as String? ?? '';
       final text = r['text'] as String? ?? '';
+      final extraNotes = (r['notes'] as String?)?.trim() ?? '';
+      final dueDateStr = r['dueDate'] as String?;
+      final alarmHour = r['alarmHour'] as int?;
+      final alarmMinute = r['alarmMinute'] as int?;
+      final subtaskTitles = (r['subtasks'] as List<dynamic>?)
+              ?.map((s) => s.toString().trim())
+              .where((s) => s.isNotEmpty)
+              .toList() ??
+          const <String>[];
+
+      final dueDate =
+          (dueDateStr != null && dueDateStr.isNotEmpty)
+              ? DateTime.tryParse(dueDateStr)
+              : null;
 
       switch (category) {
         case 'task':
-          await taskService.addTask(title.isNotEmpty ? title : text);
+          final taskTitle = title.isNotEmpty ? title : text;
+          final subtasks = subtaskTitles
+              .map((s) => Subtask(
+                    id: '${DateTime.now().microsecondsSinceEpoch}_${s.hashCode}',
+                    title: s,
+                  ))
+              .toList();
+
+          final taskId = await taskService.addTask(
+            taskTitle,
+            dueDate: dueDate != null ? Timestamp.fromDate(dueDate) : null,
+            subtasks: subtasks,
+            // If nothing extra was extracted and it wasn't split into
+            // subtasks, keep the original dump text as the task's notes
+            // so no detail from a longer entry gets lost.
+            notes: extraNotes.isNotEmpty
+                ? extraNotes
+                : (subtasks.isEmpty ? text : ''),
+          );
+
+          // A time was extracted ("...9pm") — create a real linked alarm,
+          // the same way the task form screen does, so it actually rings.
+          if (alarmHour != null &&
+              alarmMinute != null &&
+              taskId.isNotEmpty) {
+            final alarmDay = dueDate ?? DateTime.now();
+            final now = DateTime.now();
+            final alarmId = now.millisecondsSinceEpoch ~/ 1000;
+            final alarm = alarm_model.AlarmModel(
+              id: alarmId,
+              label: taskTitle,
+              hour: alarmHour,
+              minute: alarmMinute,
+              type: alarm_model.AlarmType.oneTime,
+              oneTimeDate:
+                  DateTime(alarmDay.year, alarmDay.month, alarmDay.day),
+              isEnabled: true,
+              createdAt: now,
+              updatedAt: now,
+              linkedTaskId: taskId,
+            );
+            await alarmService.saveAlarm(alarm);
+            await taskService.setLinkedAlarm(taskId, alarmId);
+          }
           created++;
           break;
         case 'note':
         case 'diary':
           await noteService.addNote(
             title: title.isNotEmpty ? title : text,
-            content: text,
+            // Prefer the model's full extracted body over the raw text
+            // when it gave us one, so nothing from a long dump is lost.
+            content: extraNotes.isNotEmpty ? extraNotes : text,
           );
           created++;
           break;
@@ -142,10 +207,34 @@ class _BrainDumpPageState extends State<BrainDumpPage> {
                   'people': Icons.person_outline,
                   'braindump': Icons.psychology_outlined,
                 };
+
+                // Build a short "what we extracted" line so the user can
+                // sanity-check the AI's parse before accepting.
+                final details = <String>[category.toString().toUpperCase()];
+                final dueDateStr = r['dueDate'] as String?;
+                if (dueDateStr != null && dueDateStr.isNotEmpty) {
+                  final parsed = DateTime.tryParse(dueDateStr);
+                  if (parsed != null) {
+                    details.add('Due ${DateFormat.MMMd().format(parsed)}');
+                  }
+                }
+                final alarmHour = r['alarmHour'] as int?;
+                final alarmMinute = r['alarmMinute'] as int?;
+                if (alarmHour != null && alarmMinute != null) {
+                  final t = TimeOfDay(hour: alarmHour, minute: alarmMinute);
+                  details.add('Alarm ${t.format(ctx)}');
+                }
+                final subtaskCount =
+                    (r['subtasks'] as List<dynamic>?)?.length ?? 0;
+                if (subtaskCount > 0) {
+                  details.add('$subtaskCount subtasks');
+                }
+
                 return ListTile(
                   leading: Icon(categoryIcons[category] ?? Icons.help_outline),
                   title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  subtitle: Text(category.toUpperCase(),
+                  subtitle: Text(
+                    details.join(' · '),
                     style: Theme.of(ctx).textTheme.labelSmall,
                   ),
                 );

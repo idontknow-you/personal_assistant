@@ -1,6 +1,6 @@
 """Auto-sort endpoint — categorizes raw brain dump entries via Gemini."""
 
-from flask import Blueprint, request, g
+from flask import Blueprint, current_app, request, g
 from firebase_auth import verify_token
 from rate_limit import limiter
 import gemini_client
@@ -33,4 +33,9 @@ def auto_sort():
         results = gemini_client.auto_sort(entries)
         return {"results": results}
     except Exception as e:
-        return {"error": f"Auto-sort failed: {e}"}, 502
+        # Log the real exception for us; never show raw error internals
+        # to the user, who just sees a generic 502-triggered message.
+        current_app.logger.exception("Auto-sort failed")
+        return {
+            "error": "Couldn't sort your brain dump right now — please try again in a moment."
+        }, 502

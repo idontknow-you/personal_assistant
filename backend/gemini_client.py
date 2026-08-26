@@ -1,8 +1,32 @@
 """Thin wrapper around the Google Generative AI SDK for Gemini — with function calling."""
 
+import datetime
 import json
 import google.generativeai as genai
 from config import config
+
+_WEEKDAYS = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+
+def _resolve_relative_weekday(weekday_name: str, today: datetime.date) -> str | None:
+    """Turn a bare weekday name (from a phrase like "by Monday") into a
+    concrete ISO date — today itself if today already is that weekday,
+    otherwise the next occurrence within the following 7 days. Doing this
+    in Python rather than trusting the model's own date arithmetic avoids
+    off-by-one weekday mistakes."""
+    target = _WEEKDAYS.get((weekday_name or "").strip().lower())
+    if target is None:
+        return None
+    delta = (target - today.weekday()) % 7
+    return (today + datetime.timedelta(days=delta)).isoformat()
 
 genai.configure(api_key=config.GEMINI_API_KEY)
 
@@ -388,13 +412,78 @@ def continue_chat(
     return result
 
 
+_AUTO_SORT_SYSTEM_PROMPT = """\
+You sort raw "brain dump" entries from a productivity app into structured \
+data the app can act on directly. For EACH entry, extract everything a \
+human would naturally infer from it — dates, times, deadlines, and \
+whether it's really several steps bundled into one dump.
+
+Reply with ONLY a JSON array (no markdown fences, no commentary before or \
+after). Each element must have exactly these keys:
+
+{
+  "text": "<the original entry text, unchanged>",
+  "category": "task" | "note" | "diary" | "dsa" | "people" | "braindump",
+  "title": "<short summary, <= 60 chars>",
+  "dueDate": "<YYYY-MM-DD, or null>",
+  "relativeWeekday": "<monday|tuesday|...|sunday, or null>",
+  "alarmHour": <0-23 integer, or null>,
+  "alarmMinute": <0-59 integer, or null>,
+  "notes": "<extra detail beyond the title, or null>",
+  "subtasks": ["<step 1>", "<step 2>", ...] or null
+}
+
+RULES:
+- category "task": anything actionable with a verb — "do X", "call Y", \
+  "interview on...", "finish the report by...". Give it a short, clean \
+  title, e.g. "interview on aug 31 9pm" -> title "Interview".
+- If an entry names a specific date ("aug 31", "31/8", "next friday"), put \
+  it in "dueDate" as YYYY-MM-DD. Assume the current year unless that would \
+  put the date in the past, in which case use next year.
+- If an entry ONLY names a bare weekday with no explicit date ("by \
+  Monday", "before Thursday"), put the weekday name in "relativeWeekday" \
+  instead of guessing the date yourself — the app resolves the exact date \
+  relative to today.
+- If an entry names a clock time ("9pm", "at 9:30am"), split it into \
+  "alarmHour" (24h) and "alarmMinute". An entry with both a date/weekday \
+  AND a time should get both — the app creates a task with that deadline \
+  plus a linked alarm at that time.
+- If an entry is long, rambling, or clearly lists multiple distinct \
+  action items toward one goal, use category "task", write one \
+  overarching title, and break the individual items into "subtasks" (one \
+  short string per step). Put any leftover context that isn't itself a \
+  step into "notes".
+- If an entry is a long thought, story, or reflection with no discrete \
+  action items, use category "note" or "diary" and put the FULL original \
+  text in "notes" (not just a short fragment) so nothing is lost.
+- Use "people" for entries primarily about a specific person, "dsa" for \
+  coding/DSA problems, and "braindump" only when nothing else fits.
+- Never invent a date, time, or subtask that isn't implied by the text — \
+  leave the field null instead of guessing.
+"""
+
+
+def _build_auto_sort_model():
+    # Deliberately a separate model instance from the chat one, with no
+    # function-calling tools attached — tool defs on the chat model can
+    # tempt Gemini into emitting a function call instead of the plain JSON
+    # array this endpoint needs.
+    return genai.GenerativeModel(
+        model_name=config.GEMINI_MODEL,
+        system_instruction=_AUTO_SORT_SYSTEM_PROMPT,
+    )
+
+
 def auto_sort(texts: list[str]) -> list[dict]:
-    """Send raw brain dump entries to Gemini for categorization."""
-    model = _build_chat_model()
+    """Send raw brain dump entries to Gemini for categorization, then
+    resolve any bare-weekday reference ("by Monday") into a concrete date.
+    """
+    model = _build_auto_sort_model()
+    today = datetime.date.today()
     joined = "\n".join(f"- {t}" for t in texts)
     prompt = (
-        "Sort these brain dump entries into categories. "
-        "Reply with ONLY a JSON array, no markdown fences:\n\n"
+        f"Today's date is {today.isoformat()} ({today.strftime('%A')}).\n\n"
+        "Sort these brain dump entries:\n\n"
         f"{joined}"
     )
     response = model.generate_content(prompt)
@@ -404,10 +493,26 @@ def auto_sort(texts: list[str]) -> list[dict]:
         if raw.endswith("```"):
             raw = raw[: -len("```")]
         raw = raw.strip()
+
     try:
-        return json.loads(raw)
+        results = json.loads(raw)
     except json.JSONDecodeError:
         return [
             {"text": t, "category": "braindump", "title": t[:60]}
             for t in texts
         ]
+
+    if not isinstance(results, list):
+        return [
+            {"text": t, "category": "braindump", "title": t[:60]}
+            for t in texts
+        ]
+
+    for r in results:
+        if not isinstance(r, dict):
+            continue
+        if not r.get("dueDate") and r.get("relativeWeekday"):
+            r["dueDate"] = _resolve_relative_weekday(r["relativeWeekday"], today)
+        r.pop("relativeWeekday", None)
+
+    return results
