@@ -185,6 +185,9 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       errorMsg = e.toString();
       debugInfo = 'backend=err:${e.toString().substring(0, 80.clamp(0, e.toString().length))}';
+      // Real detail goes to the debug console only — the user-facing
+      // message stays friendly and error-category-specific (see below).
+      debugPrint('Chat request failed: $debugInfo');
     }
     // Remove the connecting message
     if (_messages.isNotEmpty && _messages.last.text == 'Connecting to AI...') {
@@ -207,7 +210,27 @@ class _ChatScreenState extends State<ChatScreen> {
           if (mounted) { _cooldown = false; setState(() {}); }
         });
       } else {
-        userMessage = '⚠️ Could not reach AI.\n$debugInfo';
+        // Distinguish the common causes instead of dumping the raw
+        // exception text into the chat — a sleeping free-tier backend
+        // (timeout) needs a different message than no internet at all.
+        final lower = detail.toLowerCase();
+        if (lower.contains('timeoutexception') || lower.contains('timeout')) {
+          userMessage =
+              "⚠️ The AI backend is waking up — it goes to sleep after "
+              "sitting idle, and the first reply after that can take up "
+              "to a minute. Please try sending your message again.";
+        } else if (lower.contains('socketexception') ||
+            lower.contains('failed host lookup') ||
+            lower.contains('network is unreachable') ||
+            lower.contains('connection refused')) {
+          userMessage =
+              "⚠️ Could not reach the AI — check your internet connection "
+              "and try again.";
+        } else {
+          userMessage =
+              "⚠️ Something went wrong reaching the AI. Please try again "
+              "in a moment.";
+        }
       }
       setState(() {
         _loading = false;

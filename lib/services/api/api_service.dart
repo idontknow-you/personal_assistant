@@ -29,7 +29,9 @@ class ApiService {
     final token = await _getIdToken();
     if (token == null) return null;
 
-    // 30s timeout — Render cold starts are slow but we shouldn't block forever
+    // 55s timeout — a little under Render's documented ~60s worst-case
+    // cold start, so a sleeping free-tier backend gets a real chance to
+    // wake up and answer instead of timing out just before it responds.
     final response = await PinnedHttpClient.client
         .post(
           Uri.parse('$baseUrl$path'),
@@ -39,7 +41,7 @@ class ApiService {
           },
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 30));
+        .timeout(const Duration(seconds: 55));
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
