@@ -28,7 +28,7 @@ def _resolve_relative_weekday(weekday_name: str, today: datetime.date) -> str | 
     delta = (target - today.weekday()) % 7
     return (today + datetime.timedelta(days=delta)).isoformat()
 
-genai.configure(api_key=config.GEMINI_API_KEY)
+genai.configure(api_key=config.GEMINI_API_KEY, transport="rest")
 
 
 # ---------------------------------------------------------------------------
