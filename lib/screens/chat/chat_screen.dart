@@ -4,7 +4,6 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../services/api/api_service.dart';
-import '../../services/api/gemini_service.dart';
 import '../../services/chat/chat_action_handler.dart';
 import '../../utils/sanitizer.dart';
 
@@ -181,30 +180,11 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _scrollToBottom();
     try {
-      // Try direct Gemini
-      final hasKey = await GeminiService.isConfigured();
-      debugInfo = 'key=$hasKey';
-      if (hasKey) {
-        try {
-          result = await GeminiService.chat(cleanText, history: history);
-          debugInfo += ' direct=ok';
-        } catch (e) {
-          debugInfo += ' direct=err:${e.toString().substring(0, 80.clamp(0, e.toString().length))}';
-          // Fall through to backend
-        }
-      }
-      // Fallback to backend
-      if (result == null) {
-        try {
-          result = await ApiService.chatFull(cleanText, history: history);
-          debugInfo += ' backend=ok';
-        } catch (e) {
-          debugInfo += ' backend=err:${e.toString().substring(0, 80.clamp(0, e.toString().length))}';
-        }
-      }
+      result = await ApiService.chatFull(cleanText, history: history);
+      debugInfo = 'backend=ok';
     } catch (e) {
       errorMsg = e.toString();
-      debugInfo += ' fatal=$e';
+      debugInfo = 'backend=err:${e.toString().substring(0, 80.clamp(0, e.toString().length))}';
     }
     // Remove the connecting message
     if (_messages.isNotEmpty && _messages.last.text == 'Connecting to AI...') {

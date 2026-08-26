@@ -1,27 +1,27 @@
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'pinned_http_client.dart';
-import 'gemini_service.dart';
 
-/// Hybrid API service — tries direct Gemini calls first (fast, no cold start),
-/// falls back to the Flask backend on Render if direct fails.
+/// Talks to the Personal OS Flask backend.
+///
+/// Configure [baseUrl] to point to your deployed backend (e.g. Render URL)
+/// or http://localhost:5000 for local development.
+///
+/// API keys stay server-side only — the app never holds a Gemini key.
 class ApiService {
-  /// Backend URL (fallback).
+  /// Set this to your deployed backend URL.
+  /// For local dev: http://10.0.2.2:5000 (Android emulator) or
+  /// http://localhost:5000 (desktop/device).
   static String baseUrl = 'https://personal-os-prg4.onrender.com';
 
-  /// Whether to prefer direct Gemini (set to false to force backend).
-  static bool preferDirect = true;
-
-  // -----------------------------------------------------------------------
-  // Firebase auth helper (only needed for backend fallback)
-  // -----------------------------------------------------------------------
-
+  /// Returns a Firebase ID token for the current user, or null if signed out.
   static Future<String?> _getIdToken() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
     return user.getIdToken();
   }
 
+  /// POST request with Firebase auth header.
   static Future<Map<String, dynamic>?> _post(
     String path,
     Map<String, dynamic> body,
@@ -47,62 +47,26 @@ class ApiService {
     return null;
   }
 
-  // -----------------------------------------------------------------------
-  // Chat — direct first, backend fallback
-  // -----------------------------------------------------------------------
-
+  /// Send a chat message and get the full response (may include functionCalls).
   static Future<Map<String, dynamic>?> chatFull(
     String message, {
     List<Map<String, dynamic>>? history,
   }) async {
-    // Try direct Gemini first
-    if (preferDirect && await GeminiService.isConfigured()) {
-      try {
-        return await GeminiService.chat(message, history: history);
-      } catch (e) {
-        // Rate limit — don't fall back to backend, just propagate the error
-        // so the user sees the actual wait time
-        if (e.toString().contains('429') || e.toString().contains('RESOURCE_EXHAUSTED')) {
-          rethrow;
-        }
-        // Other errors — fall through to backend
-      }
-    }
-
-    // Fallback to backend
-    try {
-      final result = await _post('/api/chat', {
-        'message': message,
-        'history': history ?? [],
-      });
-      if (result == null) throw Exception('Backend returned empty response');
-      return result;
-    } catch (e) {
-      throw Exception('Backend error: $e');
-    }
+    final result = await _post('/api/chat', {
+      'message': message,
+      'history': history ?? [],
+    });
+    if (result == null) throw Exception('Backend returned empty response');
+    return result;
   }
 
+  /// Send function results back to get a natural language reply.
   static Future<Map<String, dynamic>?> chatWithFunctionResults(
     String originalMessage,
     List<Map<String, dynamic>> functionCalls,
     List<Map<String, dynamic>> functionResults, {
     List<Map<String, dynamic>>? history,
   }) async {
-    // Try direct Gemini first
-    if (preferDirect && await GeminiService.isConfigured()) {
-      try {
-        return await GeminiService.continueChat(
-          originalMessage,
-          history: history,
-          functionCalls: functionCalls,
-          functionResults: functionResults,
-        );
-      } catch (_) {
-        // Fall through to backend
-      }
-    }
-
-    // Fallback to backend
     return await _post('/api/chat', {
       'message': originalMessage,
       'history': history ?? [],
@@ -111,6 +75,7 @@ class ApiService {
     });
   }
 
+  /// Send a chat message and get a text reply (convenience wrapper).
   static Future<String?> chat(
     String message, {
     List<Map<String, dynamic>>? history,
@@ -119,22 +84,13 @@ class ApiService {
     return result?['reply'] as String?;
   }
 
-  // -----------------------------------------------------------------------
-  // Auto-sort — direct first, backend fallback
-  // -----------------------------------------------------------------------
-
+  /// Auto-sort brain dump entries via Gemini.
   static Future<List<Map<String, dynamic>>?> autoSort(
     List<String> entries,
   ) async {
-    if (preferDirect && await GeminiService.isConfigured()) {
-      try {
-        return await GeminiService.autoSort(entries);
-      } catch (e) {
-        print('⚠️ Direct Gemini autoSort failed, falling back to backend: $e');
-      }
-    }
-
-    final result = await _post('/api/auto-sort', {'entries': entries});
+    final result = await _post('/api/auto-sort', {
+      'entries': entries,
+    });
     if (result == null) return null;
     final results = result['results'];
     if (results is List) {
@@ -143,49 +99,24 @@ class ApiService {
     return null;
   }
 
-  // -----------------------------------------------------------------------
-  // Analyze person — direct first, backend fallback
-  // -----------------------------------------------------------------------
-
+  /// Analyze entries about a person via Gemini.
   static Future<Map<String, String>?> analyzePerson(
     List<Map<String, String>> entries,
   ) async {
-    if (preferDirect && await GeminiService.isConfigured()) {
-      try {
-        return await GeminiService.analyzePerson(entries);
-      } catch (e) {
-        print('⚠️ Direct Gemini analyzePerson failed, falling back to backend: $e');
-      }
-    }
-
-    final result = await _post('/api/analyze-person', {'entries': entries});
+    final result = await _post('/api/analyze-person', {
+      'entries': entries,
+    });
     if (result == null) return null;
     return result.map((k, v) => MapEntry(k, v?.toString() ?? ''));
   }
 
-  // -----------------------------------------------------------------------
-  // Weekly review — direct first, backend fallback
-  // -----------------------------------------------------------------------
-
+  /// Get weekly review summary from Gemini.
   static Future<String?> getWeeklyReview({
     required List<Map<String, dynamic>> tasks,
     required List<Map<String, dynamic>> habits,
     required List<Map<String, dynamic>> notes,
     required int streak,
   }) async {
-    if (preferDirect && await GeminiService.isConfigured()) {
-      try {
-        return await GeminiService.getWeeklyReview(
-          tasks: tasks,
-          habits: habits,
-          notes: notes,
-          streak: streak,
-        );
-      } catch (e) {
-        print('⚠️ Direct Gemini weeklyReview failed, falling back to backend: $e');
-      }
-    }
-
     final result = await _post('/api/weekly-review', {
       'tasks': tasks,
       'habits': habits,
@@ -196,22 +127,11 @@ class ApiService {
     return result?['review'] as String?;
   }
 
-  // -----------------------------------------------------------------------
-  // Semantic search — direct first, backend fallback
-  // -----------------------------------------------------------------------
-
+  /// Semantic search across user's entries.
   static Future<List<Map<String, dynamic>>?> semanticSearch(
     String query, {
     required List<Map<String, dynamic>> entries,
   }) async {
-    if (preferDirect && await GeminiService.isConfigured()) {
-      try {
-        return await GeminiService.semanticSearch(query, entries: entries);
-      } catch (e) {
-        print('⚠️ Direct Gemini semanticSearch failed, falling back to backend: $e');
-      }
-    }
-
     final result = await _post('/api/semantic-search', {
       'query': query,
       'entries': entries,
