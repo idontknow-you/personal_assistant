@@ -57,4 +57,7 @@ def chat():
             result = gemini_client.chat(message, history=clean_history)
             return result
     except Exception as e:
+        import traceback
+        print(f"[chat] Gemini error: {e}", flush=True)
+        traceback.print_exc()
         return {"error": f"Gemini error: {e}"}, 502
