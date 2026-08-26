@@ -4,6 +4,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import '../../services/api/api_service.dart';
+import '../../services/api/gemini_service.dart';
 import '../../services/chat/chat_action_handler.dart';
 import '../../utils/sanitizer.dart';
 
@@ -31,6 +32,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _speechAvailable = false;
   bool _speechInitialized = false;
   bool _ttsInitialized = false;
+  bool _cooldown = false; // prevents spamming during rate limits
 
   @override
   void initState() {
@@ -171,18 +173,65 @@ class _ChatScreenState extends State<ChatScreen> {
     if (history.isNotEmpty) history.removeLast();
 
     // Round 1: send message to backend
-    final result = await ApiService.chatFull(cleanText, history: history);
+    String? errorMsg;
+    Map<String, dynamic>? result;
+    String debugInfo = '';
+    setState(() {
+      _messages.add(_ChatMessage(role: 'action', text: 'Connecting to AI...'));
+    });
+    _scrollToBottom();
+    try {
+      // Try direct Gemini
+      final hasKey = await GeminiService.isConfigured();
+      debugInfo = 'key=$hasKey';
+      if (hasKey) {
+        try {
+          result = await GeminiService.chat(cleanText, history: history);
+          debugInfo += ' direct=ok';
+        } catch (e) {
+          debugInfo += ' direct=err:${e.toString().substring(0, 80.clamp(0, e.toString().length))}';
+          // Fall through to backend
+        }
+      }
+      // Fallback to backend
+      if (result == null) {
+        try {
+          result = await ApiService.chatFull(cleanText, history: history);
+          debugInfo += ' backend=ok';
+        } catch (e) {
+          debugInfo += ' backend=err:${e.toString().substring(0, 80.clamp(0, e.toString().length))}';
+        }
+      }
+    } catch (e) {
+      errorMsg = e.toString();
+      debugInfo += ' fatal=$e';
+    }
+    // Remove the connecting message
+    if (_messages.isNotEmpty && _messages.last.text == 'Connecting to AI...') {
+      _messages.removeLast();
+    }
 
     if (!mounted) return;
 
     if (result == null) {
+      final detail = errorMsg ?? 'No response from API';
+      final isRateLimit = detail.contains('429') || detail.contains('RESOURCE_EXHAUSTED') || detail.contains('rate');
+      String userMessage;
+      if (isRateLimit) {
+        final match = RegExp(r'retry in (\d+\.?\d*)s').firstMatch(detail);
+        final waitSec = match != null ? double.parse(match.group(1)!).ceil() : 60;
+        userMessage = '⚠️ Rate limited — too many requests.\nWait ${waitSec}s then try again.';
+        _cooldown = true;
+        setState(() {});
+        Future.delayed(Duration(seconds: waitSec), () {
+          if (mounted) { _cooldown = false; setState(() {}); }
+        });
+      } else {
+        userMessage = '⚠️ Could not reach AI.\n$debugInfo';
+      }
       setState(() {
         _loading = false;
-        _messages.add(_ChatMessage(
-          role: 'model',
-          text:
-              '⚠️ Could not reach the AI backend. Check your internet connection or try again in a moment.',
-        ));
+        _messages.add(_ChatMessage(role: 'model', text: userMessage));
       });
       _scrollToBottom();
       return;
@@ -494,7 +543,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(width: 8),
             IconButton.filledTonal(
-              onPressed: _loading ? null : _send,
+              onPressed: (_loading || _cooldown) ? null : _send,
               icon: _loading
                   ? const SizedBox(
                       width: 20,

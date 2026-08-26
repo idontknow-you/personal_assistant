@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/profile_service.dart';
+import '../../services/doom_scroll/doom_scroll_service.dart';
 
 /// Full-screen interrupt shown when doom-scrolling limits are exceeded.
 /// Displays a motivational nudge and lets the user dismiss or take a break.
@@ -213,12 +214,12 @@ class _DoomScrollInterruptScreenState extends State<DoomScrollInterruptScreen>
                     width: double.infinity,
                     child: FilledButton.icon(
                       onPressed: () {
-                        // Move app to background
-                        SystemNavigator.pop();
+                        // Dismiss and go back to using the app
                         widget.onDismiss();
+                        Navigator.of(context).pop();
                       },
                       icon: const Icon(Icons.home),
-                      label: const Text('Go do something productive'),
+                      label: const Text('Got it, I\'ll be more mindful'),
                       style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
@@ -239,6 +240,29 @@ class _DoomScrollInterruptScreenState extends State<DoomScrollInterruptScreen>
                       label: const Text('Snooze 15 min'),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  // Disable doom scroll entirely
+                  TextButton(
+                    onPressed: () async {
+                      await DoomScrollService.setEnabled(false);
+                      widget.onDismiss();
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Anti-Doom-Scroll disabled. You can re-enable it in Settings.')),
+                        );
+                      }
+                    },
+                    child: Text(
+                      'Disable Anti-Doom-Scroll',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 12,
                       ),
                     ),
                   ),
