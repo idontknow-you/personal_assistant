@@ -8,21 +8,22 @@ A mobile-first personal assistant app: tasks, alarms, habits, notes/diary, space
 
 <table>
   <tr>
+    <td align="center"><img src="docs/app_screenshots/lock.jpeg" width="200" alt="Lock Screen"/><br/><sub><b>Lock Screen</b></sub></td>
     <td align="center"><img src="docs/app_screenshots/today.jpeg" width="200" alt="Today screen"/><br/><sub><b>Today</b></sub></td>
     <td align="center"><img src="docs/app_screenshots/task.jpeg" width="200" alt="Tasks list"/><br/><sub><b>Tasks</b></sub></td>
     <td align="center"><img src="docs/app_screenshots/alarm.jpeg" width="200" alt="Alarm screen"/><br/><sub><b>Alarm ring</b></sub></td>
-    <td align="center"><img src="docs/app_screenshots/habits.jpeg" width="200" alt="Habits with streaks"/><br/><sub><b>Habits</b></sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/app_screenshots/habits.jpeg" width="200" alt="Habits with streaks"/><br/><sub><b>Habits</b></sub></td>
     <td align="center"><img src="docs/app_screenshots/calendar.jpeg" width="200" alt="Calendar view"/><br/><sub><b>Calendar</b></sub></td>
     <td align="center"><img src="docs/app_screenshots/diary.jpeg" width="200" alt="Diary with mood tags"/><br/><sub><b>Diary</b></sub></td>
     <td align="center"><img src="docs/app_screenshots/brain-dump.jpeg" width="200" alt="Brain dump auto-sort"/><br/><sub><b>Brain dump + AI sort</b></sub></td>
-    <td align="center"><img src="docs/app_screenshots/chat.jpeg" width="200" alt="AI chat"/><br/><sub><b>AI chat</b></sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/app_screenshots/chat.jpeg" width="200" alt="AI chat"/><br/><sub><b>AI chat</b></sub></td>
     <td align="center"><img src="docs/app_screenshots/dsa.jpeg" width="200" alt="DSA spaced repetition review"/><br/><sub><b>DSA review</b></sub></td>
     <td align="center"><img src="docs/app_screenshots/people.jpeg" width="200" alt="People analysis"/><br/><sub><b>People analysis</b></sub></td>
-    <td align="center"><img src="docs/app_screenshots/themes.jpeg" width="200" alt="Theme palettes"/><br/><sub><b>Themes</b></sub></td>
+    <td align="center"><img src="docs/app_screenshots/theme.jpeg" width="200" alt="Theme palettes"/><br/><sub><b>Themes</b></sub></td>
   </tr>
 </table>
 
