@@ -143,7 +143,7 @@ A mobile-first personal assistant app: tasks, alarms, habits, notes/diary, space
 ## Architecture
 
 ```
-personal_os/
+personal_assistant/
 ├── lib/
 │   ├── main.dart                    # App entry, Firebase init, global singletons
 │   ├── firebase_options.dart        # Firebase config (auto-generated)
@@ -218,7 +218,7 @@ personal_os/
 │
 ├── docs/
 │   ├── KEEP_ALIVE.md                # Avoiding Render free-tier cold starts
-│   └── screenshots/                 # README screenshots
+│   └── app_screenshots/             # README screenshots
 ├── android/                         # Android platform config
 ├── ios/                             # iOS platform (not primary target)
 ├── assets/sounds/                   # Alarm sounds
@@ -300,7 +300,7 @@ Firebase Auth (ID token verification)
 
 ```
 # Clone and enter the project
-cd personal_os
+cd personal_assistant
 
 # Install dependencies
 flutter pub get
