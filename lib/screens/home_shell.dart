@@ -12,8 +12,6 @@ import 'settings/settings_screen.dart';
 import 'dsa/dsa_screen.dart';
 import 'chat/chat_screen.dart';
 import 'people/people_screen.dart';
-import 'doom_scroll/doom_scroll_settings_screen.dart';
-import 'doom_scroll/doom_scroll_interrupt_screen.dart';
 import 'app_lock/app_lock_screen.dart';
 import 'search/semantic_search_screen.dart';
 import 'calendar/calendar_screen.dart';
@@ -21,7 +19,6 @@ import 'tasks/task_stats_screen.dart';
 import 'update/update_dialog.dart';
 import '../services/update/update_service.dart';
 import '../services/people/people_service.dart';
-import '../services/doom_scroll/doom_scroll_service.dart';
 import '../services/app_lock/app_lock_service.dart';
 import '../main.dart' show alarmService;
 import '../services/habits/habit_service.dart';
@@ -35,7 +32,7 @@ import '../services/tasks/task_service.dart';
 
 enum _NavTab { today, tasks, brainDump, chat }
 
-enum _DrawerPage { alarms, habits, diary, dsa, letters, people, search, calendar, stats, doomScroll, settings }
+enum _DrawerPage { alarms, habits, diary, dsa, letters, people, search, calendar, stats, settings }
 
 class HomeShell extends StatefulWidget {
   final String uid;
@@ -58,8 +55,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   late final DSAProblemService _dsaService;
   late final TaskService _taskService;
   bool _namePrompted = false;
-  bool _interruptShown = false;
-  DateTime? _interruptSnoozedUntil;
   bool _locked = true; // start locked until check completes
   bool _lockEnabled = false; // cached from _checkAppLock
   DateTime _lastActivity = DateTime.now();
@@ -117,7 +112,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _doomScrollTimer?.cancel();
     _inactivityTimer?.cancel();
     super.dispose();
   }
@@ -138,49 +132,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     _locked = false;
     _promptNameIfNeeded();
     _checkDueLetters();
-    _startDoomScrollMonitor();
   }
-
-  Timer? _doomScrollTimer;
-
-  void _startDoomScrollMonitor() {
-    Future.delayed(const Duration(seconds: 10), _checkDoomScrollLimits);
-    _doomScrollTimer = Timer.periodic(
-      const Duration(minutes: 5),
-      (_) => _checkDoomScrollLimits(),
-    );
-  }
-
-  Future<void> _checkDoomScrollLimits() async {
-    if (!mounted || _interruptShown) return;
-    if (_interruptSnoozedUntil != null &&
-        DateTime.now().isBefore(_interruptSnoozedUntil!)) {
-      return;
-    }
-
-    try {
-      final exceeded = await DoomScrollService.checkLimits();
-      if (exceeded.isNotEmpty && mounted) {
-        _interruptShown = true;
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            fullscreenDialog: true,
-            builder: (_) => DoomScrollInterruptScreen(
-              uid: widget.uid,
-              exceededApps: exceeded,
-              onDismiss: () {
-                _interruptShown = false;
-                _interruptSnoozedUntil =
-                    DateTime.now().add(const Duration(minutes: 15));
-              },
-            ),
-          ),
-        );
-      }
-    } catch (_) {}
-  }
-
-
 
   void _checkDueLetters() async {
     try {
@@ -299,9 +251,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           noteService: _noteService,
           brainDumpService: _brainDumpService,
         );
-        break;
-      case _DrawerPage.doomScroll:
-        screen = const DoomScrollSettingsScreen();
         break;
       case _DrawerPage.calendar:
         screen = CalendarScreen(
@@ -462,11 +411,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               leading: const Icon(Icons.bar_chart),
               title: const Text('Stats'),
               onTap: () => _openDrawerPage(_DrawerPage.stats),
-            ),
-            ListTile(
-              leading: const Icon(Icons.screen_lock_portrait),
-              title: const Text('Anti-Doom-Scroll'),
-              onTap: () => _openDrawerPage(_DrawerPage.doomScroll),
             ),
             const Spacer(),
             const Divider(height: 1),
